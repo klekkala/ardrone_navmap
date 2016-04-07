@@ -20,7 +20,7 @@
  
 #include "EstimationNode.h"
 #include "ros/ros.h"
-#include "PTAMWrapper.h"
+#include "LSDWrapper.h"
 #include "MapView.h"
 
 
