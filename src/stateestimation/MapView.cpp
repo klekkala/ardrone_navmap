@@ -25,7 +25,7 @@
 #include "Predictor.h"
 #include <gvars3/instances.h>
 #include "DroneKalmanFilter.h"
-#include "PTAMWrapper.h"
+#include "LSDWrapper.h"
 #include "EstimationNode.h"
 
 pthread_mutex_t MapView::trailPointsVec_CS = PTHREAD_MUTEX_INITIALIZER; //pthread_mutex_lock( &cs_mutex );

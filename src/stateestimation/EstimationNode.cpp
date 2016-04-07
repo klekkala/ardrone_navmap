@@ -34,7 +34,7 @@
 #include <ardrone_autonomy/Navdata.h>
 #include "deque"
 #include "tum_ardrone/filter_state.h"
-#include "PTAMWrapper.h"
+#include "LSDWrapper.h"
 #include "std_msgs/String.h"
 #include "std_msgs/Empty.h"
 #include "std_srvs/Empty.h"
