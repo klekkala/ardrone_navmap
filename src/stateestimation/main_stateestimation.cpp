@@ -43,13 +43,13 @@ int main(int argc, char **argv)
   f = boost::bind(&EstimationNode::dynConfCb, &estimator, _1, _2);
   srv.setCallback(f);
 
-  estimator.ptamWrapper->startSystem();
+  estimator.lsdWrapper->startSystem();
   estimator.mapView->startSystem();
 
   estimator.Loop();
 
   estimator.mapView->stopSystem();
-  estimator.ptamWrapper->stopSystem();
+  estimator.lsdWrapper->stopSystem();
 
   return 0;
 }
