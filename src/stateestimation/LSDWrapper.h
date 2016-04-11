@@ -50,7 +50,7 @@ typedef TooN::SE3<> tse3;
 // the thread re-renders old images, or (via callback) performs ROS-message handeling (i.e. tracking).
 // it then updates the DroneKalmanFilter.
 
-class PTAMWrapper : private CVD::Thread, private MouseKeyHandler
+class LSDWrapper : private CVD::Thread, private MouseKeyHandler
 {
 private:
 	// base window

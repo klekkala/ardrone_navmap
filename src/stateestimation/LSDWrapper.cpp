@@ -20,7 +20,7 @@
  
  
  
-#include "PTAMWrapper.h"
+#include "LSDWrapper.h"
 #include <cvd/gl_helpers.h>
 #include <gvars3/instances.h>
 #include "PTAM/ATANCamera.h"
@@ -44,7 +44,7 @@ pthread_mutex_t PTAMWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_mutex_t PTAMWrapper::logScalePairs_CS = PTHREAD_MUTEX_INITIALIZER;
 
-PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde)
+LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 {
 	filter = f;
 	node = nde;
@@ -77,7 +77,7 @@ PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 	logfileScalePairs = 0;
 }
 
-void PTAMWrapper::ResetInternal()
+void LSDWrapper::ResetInternal()
 {
 	mimFrameBW.resize(CVD::ImageRef(frameWidth, frameHeight));
 	mimFrameBW_workingCopy.resize(CVD::ImageRef(frameWidth, frameHeight));
@@ -135,7 +135,7 @@ void PTAMWrapper::ResetInternal()
 	node->publishCommand("u l PTAM has been reset.");
 }
 
-void PTAMWrapper::setPTAMPars(double minKFTimeDist, double minKFWiggleDist, double minKFDist)
+void LSDWrapper::setPTAMPars(double minKFTimeDist, double minKFWiggleDist, double minKFDist)
 {
 	if(mpMapMaker != 0)
 		mpMapMaker->minKFDist = minKFDist;
@@ -149,7 +149,7 @@ void PTAMWrapper::setPTAMPars(double minKFTimeDist, double minKFWiggleDist, doub
 	this->minKFTimeDist = minKFTimeDist;
 }
 
-PTAMWrapper::~PTAMWrapper(void)
+LSDWrapper::~PTAMWrapper(void)
 {
 	if(mpCamera != 0) delete mpCamera;
 	if(mpMap != 0) delete mpMap;
@@ -162,14 +162,14 @@ PTAMWrapper::~PTAMWrapper(void)
 }
 
 
-void PTAMWrapper::startSystem()
+void LSDWrapper::startSystem()
 {
 	keepRunning = true;
 	changeSizeNextRender = false;
 	start();
 }
 
-void PTAMWrapper::stopSystem()
+void LSDWrapper::stopSystem()
 {
 	keepRunning = false;
 	new_frame_signal.notify_all();
@@ -177,7 +177,7 @@ void PTAMWrapper::stopSystem()
 }
 
 
-void PTAMWrapper::run()
+void LSDWrapper::run()
 {
 	std::cout << "Waiting for Video" << std::endl;
 
@@ -252,7 +252,7 @@ void PTAMWrapper::run()
 // - (finally) roll forward filter
 // - query it's state 
 // - add a PTAM observation to filter.
-void PTAMWrapper::HandleFrame()
+void LSDWrapper::HandleFrame()
 {
 	//printf("tracking Frame at ms=%d (from %d)\n",getMS(ros::Time::now()),mimFrameTime-filter->delayVideo);
 
@@ -712,7 +712,7 @@ void PTAMWrapper::HandleFrame()
 
 
 // Draw the reference grid to give the user an idea of wether tracking is OK or not.
-void PTAMWrapper::renderGrid(TooN::SE3<> camFromWorld)
+void LSDWrapper::renderGrid(TooN::SE3<> camFromWorld)
 {
 	myGLWindow->SetupViewport();
 	myGLWindow->SetupVideoOrtho();
@@ -767,7 +767,7 @@ void PTAMWrapper::renderGrid(TooN::SE3<> camFromWorld)
 
 }
 
-TooN::Vector<3> PTAMWrapper::evalNavQue(unsigned int from, unsigned int to, bool* zCorrupted, bool* allCorrupted, float* out_start_pressure, float* out_end_pressure)
+TooN::Vector<3> LSDWrapper::evalNavQue(unsigned int from, unsigned int to, bool* zCorrupted, bool* allCorrupted, float* out_start_pressure, float* out_end_pressure)
 {
 	predIMUOnlyForScale->resetPos();
 
@@ -864,7 +864,7 @@ TooN::Vector<3> PTAMWrapper::evalNavQue(unsigned int from, unsigned int to, bool
 	return TooN::makeVector(predIMUOnlyForScale->x,predIMUOnlyForScale->y,predIMUOnlyForScale->z);
 }
 
-void PTAMWrapper::newNavdata(ardrone_autonomy::Navdata* nav)
+void LSDWrapper::newNavdata(ardrone_autonomy::Navdata* nav)
 {
 	lastNavinfoReceived = *nav;
 
@@ -900,7 +900,7 @@ void PTAMWrapper::newNavdata(ardrone_autonomy::Navdata* nav)
 	imuOnlyPred->predictOneStep(&lastNavinfoReceived);
 }
 
-void PTAMWrapper::newImage(sensor_msgs::ImageConstPtr img)
+void LSDWrapper::newImage(sensor_msgs::ImageConstPtr img)
 {
 
 	// convert to CVImage
@@ -934,7 +934,7 @@ void PTAMWrapper::newImage(sensor_msgs::ImageConstPtr img)
 
 
 
-void PTAMWrapper::on_key_down(int key)
+void LSDWrapper::on_key_down(int key)
 {
 	if(key == 114) // r
 	{
@@ -997,7 +997,7 @@ void PTAMWrapper::on_key_down(int key)
 
 
 // reached by typing "df p COMMAND" into console
-bool PTAMWrapper::handleCommand(std::string s)
+bool LSDWrapper::handleCommand(std::string s)
 {
 	if(s.length() == 5 && s.substr(0,5) == "space")
 	{
@@ -1067,7 +1067,7 @@ bool PTAMWrapper::handleCommand(std::string s)
 	return true;
 }
 
-void PTAMWrapper::on_mouse_down(CVD::ImageRef where, int state, int button)
+void LSDWrapper::on_mouse_down(CVD::ImageRef where, int state, int button)
 {
 	double x = 4*(where.x/(double)this->myGLWindow->size().x - 0.5);
 	double y = -4*(where.y/(double)this->myGLWindow->size().y - 0.5);
