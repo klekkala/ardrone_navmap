@@ -99,8 +99,8 @@ EstimationNode::EstimationNode()
 	droneRosTSOffset = 0;
 	lastNavStamp = ros::Time(0);
 	filter = new DroneKalmanFilter(this);
-	ptamWrapper = new PTAMWrapper(filter, this);
-	mapView = new MapView(filter, ptamWrapper, this);
+	lsdWrapper = new LSDWrapper(filter, this);
+	mapView = new MapView(filter, lsdWrapper, this);
 	arDroneVersion = 0;
 	//memset(&lastNavdataReceived,0,sizeof(ardrone_autonomy::Navdata));
 
@@ -111,7 +111,7 @@ EstimationNode::~EstimationNode()
 {
 	filter->release();
 	delete mapView;
-	delete ptamWrapper;
+	delete lsdWrapper;
 	delete filter;
 
 
@@ -171,7 +171,7 @@ void EstimationNode::navdataCb(const ardrone_autonomy::NavdataConstPtr navdataPt
 
 
 	// give to PTAM (for scale estimation)
-	ptamWrapper->newNavdata(&lastNavdataReceived);
+	lsdWrapper->newNavdata(&lastNavdataReceived);
 
 
 	// save last timestamp
@@ -214,14 +214,14 @@ void EstimationNode::velCb(const geometry_msgs::TwistConstPtr velPtr)
 void EstimationNode::vidCb(const sensor_msgs::ImageConstPtr img)
 {
 	// give to PTAM
-	ptamWrapper->newImage(img);
+	lsdWrapper->newImage(img);
 }
 
 void EstimationNode::comCb(const std_msgs::StringConstPtr str)
 {
 	if(str->data.length() > 2 && str->data.substr(0,2) == "p ")
 	{
-		ptamWrapper->handleCommand(str->data.substr(2,str->data.length()-2));
+		lsdWrapper->handleCommand(str->data.substr(2,str->data.length()-2));
 	}
 
 	if(str->data.length() > 2 && str->data.substr(0,2) == "f ")
@@ -274,7 +274,7 @@ void EstimationNode::Loop()
 		  s.header.stamp = ros::Time().now();
 		  s.scale = filter->getCurrentScales()[0];
 		  s.scaleAccuracy = filter->getScaleAccuracy();
-		  s.ptamState = ptamWrapper->PTAMStatus;
+		  s.ptamState = lsdWrapper->PTAMStatus;
 		  s.droneState = lastNavdataReceived.state;
 		  s.batteryPercent = lastNavdataReceived.batteryPercent;
 
@@ -305,7 +305,7 @@ void EstimationNode::dynConfCb(tum_ardrone::StateestimationParamsConfig &config,
 	if(!filter->allSyncLocked && config.PTAMSyncLock)
 		ROS_WARN("Ptam Sync has been disabled. This fixes scale etc.");
 
-	if(!ptamWrapper->mapLocked && config.PTAMMapLock)
+	if(!lsdWrapper->mapLocked && config.PTAMMapLock)
 		ROS_WARN("Ptam Map has been locked.");
 
 
@@ -315,12 +315,12 @@ void EstimationNode::dynConfCb(tum_ardrone::StateestimationParamsConfig &config,
 
 	filter->useScalingFixpoint = config.RescaleFixOrigin;
 
-	ptamWrapper->maxKF = config.PTAMMaxKF;
-	ptamWrapper->mapLocked = config.PTAMMapLock;
+	lsdWrapper->maxKF = config.PTAMMaxKF;
+	lsdWrapper->mapLocked = config.PTAMMapLock;
 	filter->allSyncLocked = config.PTAMSyncLock;
 
 
-	ptamWrapper->setPTAMPars(config.PTAMMinKFTimeDiff, config.PTAMMinKFWiggleDist, config.PTAMMinKFDist);
+	lsdWrapper->setPTAMPars(config.PTAMMinKFTimeDiff, config.PTAMMinKFWiggleDist, config.PTAMMinKFDist);
 
 
 	filter->c1 = config.c1;
@@ -503,25 +503,25 @@ void EstimationNode::reSendInfo()
 
 	// get ptam status string
 	std::string ptamStatus;
-	switch(ptamWrapper->PTAMStatus)
+	switch(lsdWrapper->PTAMStatus)
 	{
-	case PTAMWrapper::PTAM_IDLE:
+	case lsdWrapper::PTAM_IDLE:
 		ptamStatus = "Idle";
 		break;
-	case PTAMWrapper::PTAM_INITIALIZING:
+	case lsdWrapper::PTAM_INITIALIZING:
 		ptamStatus = "Initializing";
 		break;
-	case PTAMWrapper::PTAM_LOST:
+	case lsdWrapper::PTAM_LOST:
 		ptamStatus = "Lost";
 		break;
-	case PTAMWrapper::PTAM_FALSEPOSITIVE:
+	case lsdWrapper::PTAM_FALSEPOSITIVE:
 		ptamStatus = "FalsePositive";
 		break;
-	case PTAMWrapper::PTAM_GOOD:
+	case lsdWrapper::PTAM_GOOD:
 		ptamStatus = "Good";
 		break;
-	case PTAMWrapper::PTAM_TOOKKF:
-	case PTAMWrapper::PTAM_BEST:
+	case lsdWrapper::PTAM_TOOKKF:
+	case lsdWrapper::PTAM_BEST:
 		ptamStatus = "Best";
 		break;
 	}
@@ -529,7 +529,7 @@ void EstimationNode::reSendInfo()
 
 
 	// parse PTAM message
-	std::string ptamMsg = ptamWrapper->lastPTAMMessage;
+	std::string ptamMsg = lsdWrapper->lastPTAMMessage;
 	int kf, kp, kps[4], kpf[4];
 	int pos = ptamMsg.find("Found: ");
 	int found = 0;
