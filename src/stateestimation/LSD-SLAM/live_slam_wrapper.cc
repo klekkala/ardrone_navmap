@@ -18,6 +18,18 @@
 * along with LSD-SLAM. If not, see <http://www.gnu.org/licenses/>.
 */
 
+
+
+#include "GLWindow2.h"
+#include "TooN/se3.h"
+#include <deque>
+#include "sensor_msgs/Image.h"
+#include "ardrone_autonomy/Navdata.h"
+#include "cvd/thread.h"
+#include "cvd/image.h"
+#include "cvd/byte.h"
+#include "MouseKeyHandler.h"
+#include "boost/thread.hpp"
 #include "live_slam_wrapper.h"
 #include <vector>
 #include "util/sophus_util.h"
@@ -35,6 +47,10 @@
 
 namespace lsd_slam
 {
+
+pthread_mutex_t LiveSLAMWrapper::navInfoQueueCS = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t LiveSLAMWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t LiveSLAMWrapper::logScalePairs_CS = PTHREAD_MUTEX_INITIALIZER;
 
 
 LiveSLAMWrapper::LiveSLAMWrapper(InputImageStream* imageStream, Output3DWrapper* outputWrapper)
@@ -89,12 +105,12 @@ void LiveSLAMWrapper::newNavdata(ardrone_autonomy::Navdata* nav)
 
 	if(getMS(lastNavinfoReceived.header.stamp) > 2000000)
 	{
-		printf("PTAMSystem: ignoring navdata package with timestamp %f\n", lastNavinfoReceived.tm);
+		printf("SLAMSystem: ignoring navdata package with timestamp %f\n", lastNavinfoReceived.tm);
 		return;
 	}
 	if(lastNavinfoReceived.header.seq > 2000000 || lastNavinfoReceived.header.seq < 0)
 	{
-		printf("PTAMSystem: ignoring navdata package with ID %i\n", lastNavinfoReceived.header.seq);
+		printf("SLAMSystem: ignoring navdata package with ID %i\n", lastNavinfoReceived.header.seq);
 		return;
 	}
 
