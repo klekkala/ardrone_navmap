@@ -83,6 +83,43 @@ LiveSLAMWrapper::~LiveSLAMWrapper()
 	}
 }
 
+void LiveSLAMWrapper::newNavdata(ardrone_autonomy::Navdata* nav)
+{
+	lastNavinfoReceived = *nav;
+
+	if(getMS(lastNavinfoReceived.header.stamp) > 2000000)
+	{
+		printf("PTAMSystem: ignoring navdata package with timestamp %f\n", lastNavinfoReceived.tm);
+		return;
+	}
+	if(lastNavinfoReceived.header.seq > 2000000 || lastNavinfoReceived.header.seq < 0)
+	{
+		printf("PTAMSystem: ignoring navdata package with ID %i\n", lastNavinfoReceived.header.seq);
+		return;
+	}
+
+	// correct yaw with filter-yaw (!):
+	lastNavinfoReceived.rotZ = filter->getCurrentPose()[5];
+
+	pthread_mutex_lock( &navInfoQueueCS );
+	navInfoQueue.push_back(lastNavinfoReceived);
+
+	if(navInfoQueue.size() > 1000)	// respective 5s
+	{
+		navInfoQueue.pop_front();
+		if(!navQueueOverflown)
+			printf("NavQue Overflow detected!\n");
+		navQueueOverflown = true;
+	}
+	pthread_mutex_unlock( &navInfoQueueCS );
+
+	//filter->setPing(nav->pingNav, nav->pingVid);
+
+	imuOnlyPred->yaw = filter->getCurrentPose()[5];
+	imuOnlyPred->predictOneStep(&lastNavinfoReceived);
+}
+
+
 void LiveSLAMWrapper::Loop()
 {
 	while (true) {

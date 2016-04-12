@@ -93,7 +93,8 @@ private:
 	// initialization stuff
 	bool isInitialized;
 
-
+	DroneKalmanFilter* filter;
+	EstimationNode* node;
 
 	// monoOdometry
 	SlamSystem* monoOdometry;
