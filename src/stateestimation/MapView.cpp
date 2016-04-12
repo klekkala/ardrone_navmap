@@ -30,10 +30,10 @@
 
 pthread_mutex_t MapView::trailPointsVec_CS = PTHREAD_MUTEX_INITIALIZER; //pthread_mutex_lock( &cs_mutex );
 
-MapView::MapView(DroneKalmanFilter* f, PTAMWrapper* p, EstimationNode* nde)
+MapView::MapView(DroneKalmanFilter* f, LSDWrapper* p, EstimationNode* nde)
 {
 	filter = f;
-	ptamWrapper = p;
+	lsdWrapper = p;
 	node = nde;
 	drawUI = UI_PRES;
 	resetRequested = false;
@@ -122,11 +122,11 @@ void MapView::Render()
 	// the following complicated code is to save trail-points in ptam-scale, such that scale-reestimation will re-scale the drawn path.
 	if(addTrail)
 	{
-		if(ptamWrapper->PTAMStatus == ptamWrapper->PTAM_BEST ||
-				ptamWrapper->PTAMStatus == ptamWrapper->PTAM_TOOKKF ||
-				ptamWrapper->PTAMStatus == ptamWrapper->PTAM_GOOD)
+		if(lsdWrapper->PTAMStatus == lsdWrapper->PTAM_BEST ||
+				lsdWrapper->PTAMStatus == lsdWrapper->PTAM_TOOKKF ||
+				lsdWrapper->PTAMStatus == lsdWrapper->PTAM_GOOD)
 		{
-			if(ptamWrapper->PTAMInitializedClock != 0 && getMS() - ptamWrapper->PTAMInitializedClock > 200)
+			if(lsdWrapper->PTAMInitializedClock != 0 && getMS() - lsdWrapper->PTAMInitializedClock > 200)
 			{
 				TooN::Vector<3> PTAMScales = filter->getCurrentScales();
 				TooN::Vector<3> PTAMOffsets = filter->getCurrentOffsets().slice<0,3>();
@@ -141,10 +141,10 @@ void MapView::Render()
 				));
 			}
 		}
-		else if(ptamWrapper->PTAMStatus == ptamWrapper->PTAM_LOST ||
-				ptamWrapper->PTAMStatus == ptamWrapper->PTAM_FALSEPOSITIVE)
+		else if(lsdWrapper->PTAMStatus == lsdWrapper->PTAM_LOST ||
+				lsdWrapper->PTAMStatus == lsdWrapper->PTAM_FALSEPOSITIVE)
 		{
-			if(ptamWrapper->PTAMInitializedClock != 0 && getMS() - ptamWrapper->PTAMInitializedClock > 200)
+			if(lsdWrapper->PTAMInitializedClock != 0 && getMS() - lsdWrapper->PTAMInitializedClock > 200)
 			{
 				TooN::Vector<3> PTAMScales = filter->getCurrentScales();
 				TooN::Vector<3> PTAMOffsets = filter->getCurrentOffsets().slice<0,3>();
@@ -184,8 +184,8 @@ void MapView::Render()
 
 	plotGrid();
 
-	pthread_mutex_lock(&ptamWrapper->shallowMapCS);
-	std::vector<tse3>* kfl = &(ptamWrapper->keyFramesTransformed);
+	pthread_mutex_lock(&lsdWrapper->shallowMapCS);
+	std::vector<tse3>* kfl = &(lsdWrapper->keyFramesTransformed);
 	
 	// draw keyframes
 	for(unsigned int i=0;i<kfl->size();i++)
@@ -198,7 +198,7 @@ void MapView::Render()
 
 	// draw keypoints
 	plotMapPoints();
-	pthread_mutex_unlock(&ptamWrapper->shallowMapCS);
+	pthread_mutex_unlock(&lsdWrapper->shallowMapCS);
 
 	// draw predicted cam
 
@@ -354,7 +354,7 @@ void MapView::plotMapPoints()
 	glBegin(GL_LINES);
 	glColor3f(1,0,0);
 
-	std::vector<tvec3>* mpl = &(ptamWrapper->mapPointsTransformed);
+	std::vector<tvec3>* mpl = &(lsdWrapper->mapPointsTransformed);
 	
 	for(unsigned int i=0;i<mpl->size();i++)
 	{
@@ -614,7 +614,7 @@ bool MapView::handleCommand(std::string s)
 	if(s.length() == 5 && s.substr(0,5) == "reset")
 	{
 		filter->reset();
-		ptamWrapper->Reset();
+		lsdWrapper->Reset();
 		clearTrail = true;
 	}
 	return true;
