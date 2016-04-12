@@ -146,8 +146,8 @@ private:
 
 public:
 
-	PTAMWrapper(DroneKalmanFilter* dkf, EstimationNode* nde);
-	~PTAMWrapper(void);
+	LSDWrapper(DroneKalmanFilter* dkf, EstimationNode* nde);
+	~LSDWrapper(void);
 
 	// ROS exclusive: called by external thread if a new image/navdata is received.
 	// takes care of sync etc.
