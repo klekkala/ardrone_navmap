@@ -18,18 +18,6 @@
 * along with LSD-SLAM. If not, see <http://www.gnu.org/licenses/>.
 */
 
-
-
-#include "GLWindow2.h"
-#include "TooN/se3.h"
-#include <deque>
-#include "sensor_msgs/Image.h"
-#include "ardrone_autonomy/Navdata.h"
-#include "cvd/thread.h"
-#include "cvd/image.h"
-#include "cvd/byte.h"
-#include "MouseKeyHandler.h"
-#include "boost/thread.hpp"
 #include "live_slam_wrapper.h"
 #include <vector>
 #include "util/sophus_util.h"
@@ -47,10 +35,6 @@
 
 namespace lsd_slam
 {
-
-pthread_mutex_t LiveSLAMWrapper::navInfoQueueCS = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t LiveSLAMWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t LiveSLAMWrapper::logScalePairs_CS = PTHREAD_MUTEX_INITIALIZER;
 
 
 LiveSLAMWrapper::LiveSLAMWrapper(InputImageStream* imageStream, Output3DWrapper* outputWrapper)
@@ -98,43 +82,6 @@ LiveSLAMWrapper::~LiveSLAMWrapper()
 		delete outFile;
 	}
 }
-
-void LiveSLAMWrapper::newNavdata(ardrone_autonomy::Navdata* nav)
-{
-	lastNavinfoReceived = *nav;
-
-	if(getMS(lastNavinfoReceived.header.stamp) > 2000000)
-	{
-		printf("SLAMSystem: ignoring navdata package with timestamp %f\n", lastNavinfoReceived.tm);
-		return;
-	}
-	if(lastNavinfoReceived.header.seq > 2000000 || lastNavinfoReceived.header.seq < 0)
-	{
-		printf("SLAMSystem: ignoring navdata package with ID %i\n", lastNavinfoReceived.header.seq);
-		return;
-	}
-
-	// correct yaw with filter-yaw (!):
-	lastNavinfoReceived.rotZ = filter->getCurrentPose()[5];
-
-	pthread_mutex_lock( &navInfoQueueCS );
-	navInfoQueue.push_back(lastNavinfoReceived);
-
-	if(navInfoQueue.size() > 1000)	// respective 5s
-	{
-		navInfoQueue.pop_front();
-		if(!navQueueOverflown)
-			printf("NavQue Overflow detected!\n");
-		navQueueOverflown = true;
-	}
-	pthread_mutex_unlock( &navInfoQueueCS );
-
-	//filter->setPing(nav->pingNav, nav->pingVid);
-
-	imuOnlyPred->yaw = filter->getCurrentPose()[5];
-	imuOnlyPred->predictOneStep(&lastNavinfoReceived);
-}
-
 
 void LiveSLAMWrapper::Loop()
 {

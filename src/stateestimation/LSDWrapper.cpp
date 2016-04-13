@@ -28,6 +28,8 @@
 #include "PTAM/Tracker.h"
 #include "PTAM/Map.h"
 #include "PTAM/MapPoint.h"
+#include "LSD-SLAM/live_slam_wrapper.h"
+#include "LSD-SLAM/slam_system.h"
 #include "../HelperFunctions.h"
 #include "Predictor.h"
 #include "DroneKalmanFilter.h"

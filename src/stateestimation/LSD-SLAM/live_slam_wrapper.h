@@ -29,18 +29,6 @@
 #include "io_wrapper/timestamped_object.h"
 #include "util/sophus_util.h"
 
-
-
-class Map;
-class MapMaker;
-class Tracker;
-class ATANCamera;
-class Predictor;
-class DroneKalmanFilter;
-class DroneFlightModule;
-class EstimationNode;
-
-
 namespace cv {
 	class Mat;
 }
@@ -58,8 +46,7 @@ class Output3DWrapper;
 
 struct LiveSLAMWrapper : public Notifiable
 {
-friend class LiveSLA
-MWrapperROS;
+friend class LiveSLAMWrapperROS;
 public:
 	LiveSLAMWrapper(InputImageStream* imageStream, Output3DWrapper* outputWrapper);
 
@@ -93,8 +80,7 @@ private:
 	// initialization stuff
 	bool isInitialized;
 
-	DroneKalmanFilter* filter;
-	EstimationNode* node;
+
 
 	// monoOdometry
 	SlamSystem* monoOdometry;
