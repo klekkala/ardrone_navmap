@@ -40,6 +40,17 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <boost/thread.hpp>
+#include <boost/foreach.hpp>
+#include <qapplication.h>
+
+#include "LSD-SLAM/IOWrapper/ROS/ROSImageStreamThread.h"
+#include "LSD-SLAM/IOWrapper/ROS/ROSOutput3DWrapper.h"
+#include "LSD-SLAM/IOWrapper/ROS/rosReconfigure.h"
+
+#include "LSD-SLAM/lsd_slam_viewer/PointCloudViewer.h"
+#include "LSD-SLAM/lsd_slam_viewer/keyframeGraphMsg.h"
+#include "LSD-SLAM/lsd_slam_viewer/keyframeMsg.h"
 
 pthread_mutex_t PTAMWrapper::navInfoQueueCS = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t PTAMWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
@@ -81,6 +92,12 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 
 void LSDWrapper::ResetInternal()
 {
+
+//LSD stuff
+	InputImageStream* inputStream = new ROSImageStreamThread();
+	viewer = new PointCloudViewer();
+	
+//PTAM stuff
 	mimFrameBW.resize(CVD::ImageRef(frameWidth, frameHeight));
 	mimFrameBW_workingCopy.resize(CVD::ImageRef(frameWidth, frameHeight));
 
@@ -112,8 +129,11 @@ void LSDWrapper::ResetInternal()
 	fleH.close();
 	std::cout<< "Set Camera Paramerer to: " << camPar[0] << " " << camPar[1] << " " << camPar[2] << " " << camPar[3] << " " << camPar[4] << std::endl;
 
+	//All the LSD stuff
+	inputStream->setCalibration(calibFile);
 
 
+	//All the PTAM Stuff
 	mpMap = new Map;
 	mpCamera = new ATANCamera(camPar);
 	mpMapMaker = new MapMaker(*mpMap, *mpCamera);
