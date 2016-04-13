@@ -157,19 +157,6 @@ void LSDWrapper::ResetInternal()
 	node->publishCommand("u l PTAM has been reset.");
 }
 
-void LSDWrapper::setPTAMPars(double minKFTimeDist, double minKFWiggleDist, double minKFDist)
-{
-	if(mpMapMaker != 0)
-		mpMapMaker->minKFDist = minKFDist;
-	if(mpMapMaker != 0)
-		mpMapMaker->minKFWiggleDist = minKFWiggleDist;
-	if(mpTracker != 0)
-		mpTracker->minKFTimeDist = minKFTimeDist;
-
-	this->minKFDist = minKFDist;
-	this->minKFWiggleDist = minKFWiggleDist;
-	this->minKFTimeDist = minKFTimeDist;
-}
 
 LSDWrapper::~PTAMWrapper(void)
 {
