@@ -90,6 +90,8 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 	logfileScalePairs = 0;
 }
 
+
+
 void LSDWrapper::ResetInternal()
 {
 
