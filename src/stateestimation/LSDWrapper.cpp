@@ -128,13 +128,6 @@ void LSDWrapper::ResetInternal()
 	inputStream->setCalibration(calibFile);
 	lsdTracker = new LiveSLAMWrapper(inputStream, outputWrapper);
 
-	//All the PTAM Stuff
-	mpMap = new Map;
-	mpCamera = new ATANCamera(camPar);
-	mpMapMaker = new MapMaker(*mpMap, *mpCamera);
-	mpTracker = new Tracker(CVD::ImageRef(frameWidth, frameHeight), *mpCamera, *mpMap, *mpMapMaker);
-
-	setPTAMPars(minKFTimeDist, minKFWiggleDist, minKFDist);
 
 	predConvert->setPosRPY(0,0,0,0,0,0);
 	predIMUOnlyForScale->setPosRPY(0,0,0,0,0,0);
@@ -192,9 +185,6 @@ void LSDWrapper::run()
 	while(!newImageAvailable)
 		usleep(100000);	// sleep 100ms
 
-	// read image height and width
-	frameWidth = mimFrameBW.size().x;
-	frameHeight = mimFrameBW.size().y;
 
 	ResetInternal();
 
@@ -208,6 +198,8 @@ void LSDWrapper::run()
 	myGLWindow->set_title("PTAM Drone Camera Feed");
 
 	changeSizeNextRender = true;
+
+	//Set the framewidth
 	if(frameWidth < 640)
 		desiredWindowSize = CVD::ImageRef(frameWidth*2,frameHeight*2);
 	else
@@ -222,11 +214,8 @@ void LSDWrapper::run()
 		{
 			newImageAvailable = false;
 
-			// copy to working copy
-			mimFrameBW_workingCopy.copy_from(mimFrameBW);
-			mimFrameTime_workingCopy = mimFrameTime;
-			mimFrameSEQ_workingCopy = mimFrameSEQ;
-			mimFrameTimeRos_workingCopy = mimFrameTimeRos;
+			TimestampedMat image = imageStream->getBuffer()->first();
+			imageStream->getBuffer()->popFront();
 
 			// release lock and do the work-intensive stuff.....
 			lock.unlock();
@@ -309,9 +298,6 @@ void LSDWrapper::HandleFrame()
 		if (!(imageStream->getBuffer()->size() > 0))
 			continue;
 	}
-		
-	TimestampedMat image = imageStream->getBuffer()->first();
-	imageStream->getBuffer()->popFront();
 		
 	// process image
 	/***Note: image is of type imagedata from lsd-slam change it***/
