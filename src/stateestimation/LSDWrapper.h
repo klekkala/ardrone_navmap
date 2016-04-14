@@ -32,9 +32,9 @@
 #include "MouseKeyHandler.h"
 #include "boost/thread.hpp"
 
-class Map;
-class MapMaker;
-class Tracker;
+
+class LiveSLAMWrapper;
+class SlamSystem;
 class ATANCamera;
 class Predictor;
 class DroneKalmanFilter;
@@ -70,7 +70,7 @@ private:
 	DroneKalmanFilter* filter;
 	EstimationNode* node;
 
-	// -------------------- PTAM related stuff --------------------------------
+	// -------------------- PTAM ResetInternalted stuff --------------------------------
 	char charBuf[1000];
 	std::string msg;
 

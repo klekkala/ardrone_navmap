@@ -42,7 +42,6 @@
 #include <string>
 #include <boost/thread.hpp>
 #include <boost/foreach.hpp>
-#include <qapplication.h>
 
 #include "LSD-SLAM/IOWrapper/ROS/ROSImageStreamThread.h"
 #include "LSD-SLAM/IOWrapper/ROS/ROSOutput3DWrapper.h"
@@ -307,6 +306,12 @@ void LSDWrapper::HandleFrame()
 	// track
 	ros::Time startedPTAM = ros::Time::now();
 	mpTracker->TrackFrame(mimFrameBW_workingCopy, true);
+
+
+	// LSD slam tracking
+	TooN::SE3<> LSDResultSE3 = lsdTracker->getCurrentPoseEstimate();
+
+	
 	TooN::SE3<> PTAMResultSE3 = mpTracker->GetCurrentPose();
 	lastPTAMMessage = msg = mpTracker->GetMessageForUser();
 	ros::Duration timePTAM= ros::Time::now() - startedPTAM;
