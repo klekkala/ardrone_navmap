@@ -482,33 +482,13 @@ void LSDWrapper::HandleFrame()
 		node->publishCommand(std::string("u l ")+charBuf);
 	}
 
-
+	/**** removed
 	// ----------------------------- Take KF? -----------------------------------
-	if(!mapLocked && isVeryGood && (forceKF || mpMap->vpKeyFrames.size() < maxKF || maxKF <= 1))
-	{
-		mpTracker->TakeKF(forceKF);
-		forceKF = false;
-	}
 
 	// ---------------- save PTAM status for KI --------------------------------
-	if(mpTracker->lastStepResult == mpTracker->NOT_TRACKING)
-		PTAMStatus = PTAM_IDLE;
-	else if(mpTracker->lastStepResult == mpTracker->I_FIRST ||
-		mpTracker->lastStepResult == mpTracker->I_SECOND ||
-		mpTracker->lastStepResult == mpTracker->T_TOOK_KF)
-		PTAMStatus = PTAM_TOOKKF;
-	else if(mpTracker->lastStepResult == mpTracker->INITIALIZING)
-		PTAMStatus = PTAM_INITIALIZING;
-	else if(isVeryGood)
-		PTAMStatus = PTAM_BEST;
-	else if(isGood)
-		PTAMStatus = PTAM_GOOD;
-	else if(mpTracker->lastStepResult == mpTracker->T_DODGY ||
-		mpTracker->lastStepResult == mpTracker->T_GOOD)
-		PTAMStatus = PTAM_FALSEPOSITIVE;
-	else
-		PTAMStatus = PTAM_LOST;
+	removed ******/
 
+	
 	 
 	// ----------------------------- update shallow map --------------------------
 	if(!mapLocked && rand()%5==0)
