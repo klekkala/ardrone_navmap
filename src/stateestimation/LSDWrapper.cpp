@@ -296,14 +296,26 @@ void LSDWrapper::HandleFrame()
 	TooN::SE3<> PTAMPoseGuessSE3 = predConvert->droneToFrontNT * predConvert->globaltoDrone;
 
 
-	// set
-	mpTracker->setPredictedCamFromW(PTAMPoseGuessSE3);
-	//mpTracker->setLastFrameLost((isGoodCount < -10), (videoFrameID%2 != 0));
-	mpTracker->setLastFrameLost((isGoodCount < -20), (mimFrameSEQ_workingCopy%3 == 0));
-
-	// track
-	ros::Time startedPTAM = ros::Time::now();
-	mpTracker->TrackFrame(mimFrameBW_workingCopy, true);
+	boost::unique_lock<boost::recursive_mutex> waitLock(imageStream->getBuffer()->getMutex());
+		while (!fullResetRequested && !(imageStream->getBuffer()->size() > 0)) {
+			notifyCondition.wait(waitLock);
+		}
+		waitLock.unlock();
+		
+		
+	if(fullResetRequested)
+	{
+		resetAll();
+		fullResetRequested = false;
+		if (!(imageStream->getBuffer()->size() > 0))
+			continue;
+	}
+		
+	TimestampedMat image = imageStream->getBuffer()->first();
+	imageStream->getBuffer()->popFront();
+		
+	// process image
+	newImageCallback(image.data, image.timestamp);
 
 
 	// LSD slam tracking
@@ -863,6 +875,10 @@ TooN::Vector<3> LSDWrapper::evalNavQue(unsigned int from, unsigned int to, bool*
 
 	return TooN::makeVector(predIMUOnlyForScale->x,predIMUOnlyForScale->y,predIMUOnlyForScale->z);
 }
+
+
+
+//Input function to takein the navdata from ardrone driver
 
 void LSDWrapper::newNavdata(ardrone_autonomy::Navdata* nav)
 {
