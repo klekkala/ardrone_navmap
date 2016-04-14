@@ -28,8 +28,6 @@
 #include "PTAM/Tracker.h"
 #include "PTAM/Map.h"
 #include "PTAM/MapPoint.h"
-#include "LSD-SLAM/live_slam_wrapper.h"
-#include "LSD-SLAM/slam_system.h"
 #include "../HelperFunctions.h"
 #include "Predictor.h"
 #include "DroneKalmanFilter.h"
@@ -42,14 +40,11 @@
 #include <string>
 #include <boost/thread.hpp>
 #include <boost/foreach.hpp>
-
+#include "LSD-SLAM/live_slam_wrapper.h"
+#include "LSD-SLAM/slam_system.h"
 #include "LSD-SLAM/IOWrapper/ROS/ROSImageStreamThread.h"
 #include "LSD-SLAM/IOWrapper/ROS/ROSOutput3DWrapper.h"
 #include "LSD-SLAM/IOWrapper/ROS/rosReconfigure.h"
-
-#include "LSD-SLAM/lsd_slam_viewer/PointCloudViewer.h"
-#include "LSD-SLAM/lsd_slam_viewer/keyframeGraphMsg.h"
-#include "LSD-SLAM/lsd_slam_viewer/keyframeMsg.h"
 
 pthread_mutex_t PTAMWrapper::navInfoQueueCS = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t PTAMWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
@@ -132,7 +127,7 @@ void LSDWrapper::ResetInternal()
 
 	//All the LSD stuff
 	inputStream->setCalibration(calibFile);
-
+	lsdTracker = new LiveSLAMWrapper(inputStream, outputWrapper);
 
 	//All the PTAM Stuff
 	mpMap = new Map;
@@ -257,6 +252,9 @@ void LSDWrapper::run()
 	delete myGLWindow;
 }
 
+
+
+
 // called every time a new frame is available.
 // needs to be able to 
 // - (finally) roll forward filter
@@ -311,7 +309,7 @@ void LSDWrapper::HandleFrame()
 	// LSD slam tracking
 	TooN::SE3<> LSDResultSE3 = lsdTracker->getCurrentPoseEstimate();
 
-	
+
 	TooN::SE3<> PTAMResultSE3 = mpTracker->GetCurrentPose();
 	lastPTAMMessage = msg = mpTracker->GetMessageForUser();
 	ros::Duration timePTAM= ros::Time::now() - startedPTAM;
@@ -701,22 +699,8 @@ void LSDWrapper::HandleFrame()
 		TooN::Vector<3> sums = TooN::makeVector(0,0,0);
 		TooN::Vector<6> offsets = filter->getCurrentOffsets();
 		pthread_mutex_lock(&(node->logPTAM_CS));
-		// log:
-		// - filterPosePrePTAM estimated for videoFrameTimestamp-delayVideo.
-		// - PTAMResulttransformed estimated for videoFrameTimestamp-delayVideo. (using imu only for last step)
-		// - predictedPoseSpeed estimated for lastNfoTimestamp+filter->delayControl	(actually predicting)
-		// - predictedPoseSpeedATLASTNFO estimated for lastNfoTimestamp	(using imu only)
-		if(node->logfilePTAM != NULL)
-			(*(node->logfilePTAM)) << (isGood ? (isVeryGood ? 2 : 1) : 0) << " " <<
-				(mimFrameTime_workingCopy-filter->delayVideo) << " " << filterPosePrePTAM[0] << " " << filterPosePrePTAM[1] << " " << filterPosePrePTAM[2] << " " << filterPosePrePTAM[3] << " " << filterPosePrePTAM[4] << " " << filterPosePrePTAM[5] << " " << filterPosePrePTAM[6] << " " << filterPosePrePTAM[7] << " " << filterPosePrePTAM[8] << " " << filterPosePrePTAM[9] << " " <<
-				filterPosePostPTAM[0] << " " << filterPosePostPTAM[1] << " " << filterPosePostPTAM[2] << " " << filterPosePostPTAM[3] << " " << filterPosePostPTAM[4] << " " << filterPosePostPTAM[5] << " " << filterPosePostPTAM[6] << " " << filterPosePostPTAM[7] << " " << filterPosePostPTAM[8] << " " << filterPosePostPTAM[9] << " " << 
-				PTAMResultTransformed[0] << " " << PTAMResultTransformed[1] << " " << PTAMResultTransformed[2] << " " << PTAMResultTransformed[3] << " " << PTAMResultTransformed[4] << " " << PTAMResultTransformed[5] << " " << 
-				scales[0] << " " << scales[1] << " " << scales[2] << " " << 
-				offsets[0] << " " << offsets[1] << " " << offsets[2] << " " << offsets[3] << " " << offsets[4] << " " << offsets[5] << " " <<
-				sums[0] << " " << sums[1] << " " << sums[2] << " " << 
-				PTAMResult[0] << " " << PTAMResult[1] << " " << PTAMResult[2] << " " << PTAMResult[3] << " " << PTAMResult[4] << " " << PTAMResult[5] << " " <<
-				PTAMResultSE3TwistOrg[0] << " " << PTAMResultSE3TwistOrg[1] << " " << PTAMResultSE3TwistOrg[2] << " " << PTAMResultSE3TwistOrg[3] << " " << PTAMResultSE3TwistOrg[4] << " " << PTAMResultSE3TwistOrg[5] << " " <<
-				videoFramePing << " " << mimFrameTimeRos_workingCopy << " " << mimFrameSEQ_workingCopy << std::endl;
+		
+		lsdTracker->logCameraPose(camToWorld, time);
 
 		pthread_mutex_unlock(&(node->logPTAM_CS));
 	}
