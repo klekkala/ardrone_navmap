@@ -148,10 +148,7 @@ void LSDWrapper::ResetInternal()
 
 LSDWrapper::~PTAMWrapper(void)
 {
-	if(mpCamera != 0) delete mpCamera;
-	if(mpMap != 0) delete mpMap;
-	if(mpMapMaker != 0) delete mpMapMaker;
-	if(mpTracker != 0) delete mpTracker;
+	if(lsdTracker != 0) delete lsdTracker;
 	if(predConvert != 0) delete predConvert;
 	if(predIMUOnlyForScale != 0) delete predIMUOnlyForScale;
 	if(imuOnlyPred != 0) delete imuOnlyPred;
@@ -307,9 +304,6 @@ void LSDWrapper::HandleFrame()
 	// LSD slam tracking
 	TooN::SE3<> LSDResultSE3 = lsdTracker->getCurrentPoseEstimate();
 
-
-	TooN::SE3<> PTAMResultSE3 = mpTracker->GetCurrentPose();
-	lastPTAMMessage = msg = mpTracker->GetMessageForUser();
 	ros::Duration timePTAM= ros::Time::now() - startedPTAM;
 
 	TooN::Vector<6> PTAMResultSE3TwistOrg = PTAMResultSE3.ln();
@@ -325,33 +319,7 @@ void LSDWrapper::HandleFrame()
 	// 3. transform with filter
 	TooN::Vector<6> PTAMResultTransformed = filter->transformPTAMObservation(PTAMResult);
 
-
-
-
-	// init failed?
-	if(mpTracker->lastStepResult == mpTracker->I_FAILED)
-	{
-		ROS_INFO("initializing PTAM failed, resetting!");
-		resetPTAMRequested = true;
-	}
-	if(mpTracker->lastStepResult == mpTracker->I_SECOND)
-	{
-		PTAMInitializedClock = getMS();
-		filter->setCurrentScales(TooN::makeVector(mpMapMaker->initialScaleFactor*1.2,mpMapMaker->initialScaleFactor*1.2,mpMapMaker->initialScaleFactor*1.2));
-		mpMapMaker->currentScaleFactor = filter->getCurrentScales()[0];
-		ROS_INFO("PTAM initialized!");
-		ROS_INFO("initial scale: %f\n",mpMapMaker->initialScaleFactor*1.2);
-		node->publishCommand("u l PTAM initialized (took second KF)");
-		framesIncludedForScaleXYZ = -1;
-		lockNextFrame = true;
-		imuOnlyPred->resetPos();
-	}
-	if(mpTracker->lastStepResult == mpTracker->I_FIRST)
-	{
-		node->publishCommand("u l PTAM initialization started (took first KF)");
-	}
-
-
+	//Init failed code removed
 
 
 
