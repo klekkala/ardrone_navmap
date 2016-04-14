@@ -91,7 +91,6 @@ void LSDWrapper::ResetInternal()
 
 //LSD stuff
 	InputImageStream* inputStream = new ROSImageStreamThread();
-	viewer = new PointCloudViewer();
 	
 //PTAM stuff
 	mimFrameBW.resize(CVD::ImageRef(frameWidth, frameHeight));
@@ -315,6 +314,7 @@ void LSDWrapper::HandleFrame()
 	imageStream->getBuffer()->popFront();
 		
 	// process image
+	/***Note: image is of type imagedata from lsd-slam change it***/
 	newImageCallback(image.data, image.timestamp);
 
 
