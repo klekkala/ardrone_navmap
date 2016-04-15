@@ -313,11 +313,11 @@ void LSDWrapper::HandleFrame()
 
 	// 1. multiply from left by frontToDroneNT.
 	// 2. convert to xyz,rpy
-	predConvert->setPosSE3_globalToDrone(predConvert->frontToDroneNT * PTAMResultSE3);
-	TooN::Vector<6> PTAMResult = TooN::makeVector(predConvert->x, predConvert->y, predConvert->z, predConvert->roll, predConvert->pitch, predConvert->yaw);
+	predConvert->setPosSE3_globalToDrone(predConvert->frontToDroneNT * LSDResultSE3);
+	TooN::Vector<6> LSDResult = TooN::makeVector(predConvert->x, predConvert->y, predConvert->z, predConvert->roll, predConvert->pitch, predConvert->yaw);
 
 	// 3. transform with filter
-	TooN::Vector<6> PTAMResultTransformed = filter->transformLSDObservation(PTAMResult);
+	TooN::Vector<6> LSDResultTransformed = filter->transformLSDObservation(LSDResult);
 
 	//Init failed code removed
 
@@ -388,7 +388,9 @@ void LSDWrapper::HandleFrame()
 
 	}
 
-	TooN::Vector<10> filterPosePostPTAM;
+
+
+	TooN::Vector<10> filterPosePostLSD;
 	// --------------------------- scale estimation & update filter (REDONE) -----------------------------
 	// interval length is always between 1s and 2s, to enshure approx. same variances.
 	// if interval contained height inconsistency, z-distances are simply both set to zero, which does not generate a bias.
@@ -403,7 +405,7 @@ void LSDWrapper::HandleFrame()
 	pthread_mutex_lock( &filter->filter_CS );
 	if(filter->usePTAM && isGoodCount >= 3)
 	{
-		filter->addPTAMObservation(PTAMResult,mimFrameTime_workingCopy-filter->delayVideo);
+		filter->addPTAMObservation(LSDResult,mimFrameTime_workingCopy-filter->delayVideo);
 	}
 	else
 		filter->addFakePTAMObservation(mimFrameTime_workingCopy-filter->delayVideo);
@@ -490,12 +492,15 @@ void LSDWrapper::HandleFrame()
 
 
 	 
-	// ----------------------------- update shallow map --------------------------
+	// ----------------------------- update shallow map for LSD SLAM-----------------
 	if(!mapLocked && rand()%5==0)
 	{
 		pthread_mutex_lock(&shallowMapCS);
+
+		// Should convert both of them to LSD
 		mapPointsTransformed.clear();
 		keyFramesTransformed.clear();
+
 		for(unsigned int i=0;i<mpMap->vpKeyFrames.size();i++)
 		{
 			predConvert->setPosSE3_globalToDrone(predConvert->frontToDroneNT * mpMap->vpKeyFrames[i]->se3CfromW);
@@ -504,8 +509,11 @@ void LSDWrapper::HandleFrame()
 			predConvert->setPosRPY(CamPos[0], CamPos[1], CamPos[2], CamPos[3], CamPos[4], CamPos[5]);
 			keyFramesTransformed.push_back(predConvert->droneToGlobal);
 		}
-		TooN::Vector<3> PTAMScales = filter->getCurrentScales();
-		TooN::Vector<3> PTAMOffsets = filter->getCurrentOffsets().slice<0,3>();
+		TooN::Vector<3> LSDScales = filter->getCurrentScales();
+		TooN::Vector<3> LSDOffsets = filter->getCurrentOffsets().slice<0,3>();
+
+
+		//Converting the local points by PTAM to the world perspective by multiplying by the scale
 		for(unsigned int i=0;i<mpMap->vpPoints.size();i++)
 		{
 			TooN::Vector<3> pos = (mpMap->vpPoints)[i]->v3WorldPos;
