@@ -792,11 +792,11 @@ void DroneKalmanFilter::predictUpTo(int timestamp, bool consume, bool useControl
 }
 
 
-TooN::Vector<3> DroneKalmanFilter::transformPTAMObservation(double x,double y,double z)
+TooN::Vector<3> DroneKalmanFilter::transformLSDObservation(double x,double y,double z)
 {
-	return transformPTAMObservation(x,y,z,yaw.state[0]);
+	return transformLSDObservation(x,y,z,yaw.state[0]);
 }
-TooN::Vector<3> DroneKalmanFilter::transformPTAMObservation(double x,double y,double z, double yaw)
+TooN::Vector<3> DroneKalmanFilter::transformLSDObservation(double x,double y,double z, double yaw)
 {
 	double yawRad = yaw * 3.14159268 / 180;
 	x = x_offset + xy_scale*x - 0.2*sin(yawRad);
@@ -805,9 +805,9 @@ TooN::Vector<3> DroneKalmanFilter::transformPTAMObservation(double x,double y,do
 	return TooN::makeVector(x,y,z);
 }
 
-TooN::Vector<6> DroneKalmanFilter::transformPTAMObservation(TooN::Vector<6> obs)
+TooN::Vector<6> DroneKalmanFilter::transformLSDObservation(TooN::Vector<6> obs)
 {
-	obs.slice<0,3>() = transformPTAMObservation(obs[0], obs[1], obs[2], obs[5]);
+	obs.slice<0,3>() = transformLSDObservation(obs[0], obs[1], obs[2], obs[5]);
 	
 	obs[3] += roll_offset;
 	obs[4] += pitch_offset;

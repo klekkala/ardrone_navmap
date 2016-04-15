@@ -258,11 +258,12 @@ void LSDWrapper::HandleFrame()
 		ResetInternal();
 
 
+
 	// make filter thread-safe.
 	// --------------------------- ROLL FORWARD TIL FRAME. This is ONLY done here. ---------------------------
 	pthread_mutex_lock( &filter->filter_CS );
 	//filter->predictUpTo(mimFrameTime,true, true);
-	TooN::Vector<10> filterPosePrePTAM = filter->getPoseAtAsVec(mimFrameTime_workingCopy-filter->delayVideo,true);
+	TooN::Vector<10> filterPosePreLSD = filter->getPoseAtAsVec(mimFrameTime_workingCopy-filter->delayVideo,true);
 	pthread_mutex_unlock( &filter->filter_CS );
 
 	// ------------------------ do PTAM -------------------------
@@ -273,7 +274,7 @@ void LSDWrapper::HandleFrame()
 
 
 	// 1. transform with filter
-	TooN::Vector<6> PTAMPoseGuess = filter->backTransformPTAMObservation(filterPosePrePTAM.slice<0,6>());
+	TooN::Vector<6> LSDPoseGuess = filter->backTransformPTAMObservation(filterPosePreLSD.slice<0,6>());
 	// 2. convert to se3
 	predConvert->setPosRPY(PTAMPoseGuess[0], PTAMPoseGuess[1], PTAMPoseGuess[2], PTAMPoseGuess[3], PTAMPoseGuess[4], PTAMPoseGuess[5]);
 	// 3. multiply with rotation matrix	
@@ -305,9 +306,9 @@ void LSDWrapper::HandleFrame()
 
 	ros::Duration timePTAM= ros::Time::now() - startedPTAM;
 
-	TooN::Vector<6> PTAMResultSE3TwistOrg = PTAMResultSE3.ln();
+	TooN::Vector<6> LSDResultSE3TwistOrg = LSDResultSE3.ln();
 
-	node->publishTf(mpTracker->GetCurrentPose(),mimFrameTimeRos_workingCopy, mimFrameSEQ_workingCopy,"cam_front");
+	node->publishTf(lsdTracker->getCurrentPoseEstimate(), mimFrameTimeRos_workingCopy, mimFrameSEQ_workingCopy,"cam_front");
 
 
 	// 1. multiply from left by frontToDroneNT.
@@ -316,7 +317,7 @@ void LSDWrapper::HandleFrame()
 	TooN::Vector<6> PTAMResult = TooN::makeVector(predConvert->x, predConvert->y, predConvert->z, predConvert->roll, predConvert->pitch, predConvert->yaw);
 
 	// 3. transform with filter
-	TooN::Vector<6> PTAMResultTransformed = filter->transformPTAMObservation(PTAMResult);
+	TooN::Vector<6> PTAMResultTransformed = filter->transformLSDObservation(PTAMResult);
 
 	//Init failed code removed
 
@@ -327,7 +328,7 @@ void LSDWrapper::HandleFrame()
 	bool isGood = true;
 	bool isVeryGood = true;
 	// calculate absolute differences.
-	TooN::Vector<6> diffs = PTAMResultTransformed - filterPosePrePTAM.slice<0,6>();
+	TooN::Vector<6> diffs = PTAMResultTransformed - filterPosePreLSD.slice<0,6>();
 	for(int i=0;1<1;i++) diffs[i] = abs(diffs[i]);
 
 
