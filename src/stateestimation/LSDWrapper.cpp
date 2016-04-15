@@ -211,8 +211,7 @@ void LSDWrapper::run()
 		{
 			newImageAvailable = false;
 
-			TimestampedMat image = imageStream->getBuffer()->first();
-			imageStream->getBuffer()->popFront();
+			mimFrameBW_workingCopy.copy_from(mimFrameBW);
 
 			// release lock and do the work-intensive stuff.....
 			lock.unlock();
@@ -298,7 +297,7 @@ void LSDWrapper::HandleFrame()
 		
 	// process image
 	/***Note: image is of type imagedata from lsd-slam change it***/
-	newImageCallback(image.data, image.timestamp);
+	newImageCallback(mimFrameBW_workingCopy);
 
 
 	// LSD slam tracking
@@ -488,7 +487,7 @@ void LSDWrapper::HandleFrame()
 	// ---------------- save PTAM status for KI --------------------------------
 	removed ******/
 
-	
+
 	 
 	// ----------------------------- update shallow map --------------------------
 	if(!mapLocked && rand()%5==0)
@@ -686,7 +685,7 @@ void LSDWrapper::renderGrid(TooN::SE3<> camFromWorld)
 			if(v3Cam[2] < 0.001)
 				v3Cam = TooN::makeVector(100000*v3Cam[0],100000*v3Cam[1],0.0001);
 
-			imVertices[i][j] = mpCamera->Project(TooN::project(v3Cam))*0.5;
+s			imVertices[i][j] = mpCamera->Project(TooN::project(v3Cam))*0.5;
 		}
 
 	glEnable(GL_LINE_SMOOTH);
@@ -850,6 +849,8 @@ void LSDWrapper::newNavdata(ardrone_autonomy::Navdata* nav)
 	imuOnlyPred->predictOneStep(&lastNavinfoReceived);
 }
 
+
+//newImage modified for the lsd integration
 void LSDWrapper::newImage(sensor_msgs::ImageConstPtr img)
 {
 
@@ -875,6 +876,7 @@ void LSDWrapper::newImage(sensor_msgs::ImageConstPtr img)
 	if(mimFrameBW.size().x != img->width || mimFrameBW.size().y != img->height)
 		mimFrameBW.resize(CVD::ImageRef(img->width, img->height));
 
+	// copy to mimFrameBW which is of the struct Timestampedobject with a Template <cv::Mat> and Timestamp
 	memcpy(mimFrameBW.data(),cv_ptr->image.data,img->width * img->height);
 	newImageAvailable = true;
 

@@ -74,8 +74,8 @@ private:
 	char charBuf[1000];
 	std::string msg;
 
-	CVD::Image<CVD::byte> mimFrameBW;
-	CVD::Image<CVD::byte> mimFrameBW_workingCopy;
+	Timestamped mimFrameBW;
+	Timestamped mimFrameBW_workingCopy;
 	int mimFrameTime;
 	int mimFrameTime_workingCopy;
 	unsigned int mimFrameSEQ;
