@@ -301,9 +301,6 @@ void LSDWrapper::HandleFrame()
 
 	else
 	{
-		// some chewy heuristic when to add and when not to.
-		bool dodgy = mpTracker->lastStepResult == mpTracker->T_DODGY ||
-			mpTracker->lastStepResult == mpTracker->T_RECOVERED_DODGY;
 
 		// if yaw difference too big: something certainly is wrong.
 		// maximum difference is 5 + 2*(number of seconds since PTAM observation).
@@ -316,14 +313,14 @@ void LSDWrapper::HandleFrame()
 			lastGoodYawClock = getMS();
 
 		if(diffs[5] > 4.0) 
-			isVeryGood = false;
+			isGood = false;
 
 		// if rp difference too big: something certainly is wrong.
 		if(diffs[3] > 20 || diffs[4] > 20)
 			isGood = false;
 
 		if(diffs[3] > 3 || diffs[4] > 3 || dodgy)
-			isVeryGood = false;
+			isGood = false;
 	}
 
 	if(isGood)
