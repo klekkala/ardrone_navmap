@@ -79,23 +79,20 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 
 void LSDWrapper::ResetInternal()
 {
-
-//LSD stuff
-	InputImageStream* inputStream = new ROSImageStreamThread();
 	
 //PTAM stuff
 	mimFrameBW.resize(CVD::ImageRef(frameWidth, frameHeight));
 	mimFrameBW_workingCopy.resize(CVD::ImageRef(frameWidth, frameHeight));
 
 
-	if(mpMapMaker != 0) delete mpMapMaker;
-	if(mpMap != 0) delete mpMap;
-	if(mpTracker != 0) delete mpTracker;
-	if(mpCamera != 0) delete mpCamera;
+	if(inputStream != 0) delete inputStream;
+	if(outputWrapper != 0) delete outputWrapper;
+	if(lsdTracker != 0) delete lsdTracker;
 
+	InputImageStream* inputStream = new ROSImageStreamThread();
 
 	// read camera calibration (yes, its done here)
-	std::string file = node->calibFile;
+	std::string calibFile;
 	while(node->arDroneVersion == 0)
 	{
 		std::cout << "Waiting for first navdata to determine drone version!" << std::endl;
@@ -109,31 +106,27 @@ void LSDWrapper::ResetInternal()
 			file = node->packagePath + "/camcalib/ardrone2_default.txt";
 	}
 
+	//Setting the filestream
 	std::ifstream fleH (file.c_str());
-	TooN::Vector<5> camPar;
-	fleH >> camPar[0] >> camPar[1] >> camPar[2] >> camPar[3] >> camPar[4];
+	inputStream->setCalibration(fileH);
 	fleH.close();
-	std::cout<< "Set Camera Paramerer to: " << camPar[0] << " " << camPar[1] << " " << camPar[2] << " " << camPar[3] << " " << camPar[4] << std::endl;
 
-	//All the LSD stuff
-	inputStream->setCalibration(calibFile);
-	outputWrapper = new DebugOutput3DWrapper(inputStream->width(), inputStream->height());
-	lsdTracker = new LiveSLAMWrapper(inputStream, outputWrapper);
-
+	
+	outputWrapper = new ROSOutput3DWrapper(inputStream->width(), inputStream->height());
+	LiveSLAMWrapper lsdTracker(inputStream, outputWrapper);
+	
 	predConvert->setPosRPY(0,0,0,0,0,0);
 	predIMUOnlyForScale->setPosRPY(0,0,0,0,0,0);
 
 	resetLSDRequested = false;
-	forceKF = false;
 	isGoodCount = 0;
 	lastAnimSentClock = 0;
-	lockNextFrame = false;
-	PTAMInitializedClock = 0;
-	lastPTAMMessage = "";
+	LSDInitializedClock = 0;
+	lastLSDMessage = "";
 
 	flushMapKeypoints = false;
 
-	node->publishCommand("u l PTAM has been reset.");
+	node->publishCommand("u l LSD has been reset.");
 }
 
 
