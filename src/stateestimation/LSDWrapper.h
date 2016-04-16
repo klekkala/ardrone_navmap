@@ -70,7 +70,7 @@ private:
 	DroneKalmanFilter* filter;
 	EstimationNode* node;
 
-	// -------------------- PTAM ResetInternalted stuff --------------------------------
+	// -------------------- PTAM Related stuff --------------------------------
 	char charBuf[1000];
 	std::string msg;
 
@@ -88,7 +88,8 @@ private:
 	// Map is in my global Coordinate system. keyframes give the front-cam-position, i.e.
 	// CFromW is "GlobalToFront". this is achieved by aligning the global coordinate systems in the very beginning.
 	InputImageStream* inputStream;
-	LiveSLAMWrapper* lsdTracker; 
+	Output3DWrapper* outputWrapper;
+	LiveSLAMWrapper* lsdTracker;
 	ATANCamera *mpCamera;
 	Predictor* predConvert;			// used ONLY to convert from rpy to se3 and back, i.e. never kept in some state.
 	Predictor* predIMUOnlyForScale;	// used for scale calculation. needs to be updated with every new navinfo...

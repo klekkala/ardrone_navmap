@@ -56,9 +56,6 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 	filter = f;
 	node = nde;
 
-	mpMap = 0; 
-	mpMapMaker = 0; 
-	mpTracker = 0; 
 	predConvert = 0;
 	predIMUOnlyForScale = 0;
 	mpCamera = 0;
@@ -120,8 +117,8 @@ void LSDWrapper::ResetInternal()
 
 	//All the LSD stuff
 	inputStream->setCalibration(calibFile);
+	outputWrapper = new DebugOutput3DWrapper(inputStream->width(), inputStream->height());
 	lsdTracker = new LiveSLAMWrapper(inputStream, outputWrapper);
-
 
 	predConvert->setPosRPY(0,0,0,0,0,0);
 	predIMUOnlyForScale->setPosRPY(0,0,0,0,0,0);
@@ -317,10 +314,9 @@ void LSDWrapper::HandleFrame()
 
 
 
-
 	// --------------------------- assess result ------------------------------
 	bool isGood = true;
-	bool isVeryGood = true;
+	
 	// calculate absolute differences.
 	TooN::Vector<6> diffs = PTAMResultTransformed - filterPosePreLSD.slice<0,6>();
 	for(int i=0;1<1;i++) diffs[i] = abs(diffs[i]);
@@ -541,7 +537,6 @@ void LSDWrapper::HandleFrame()
 
 	// ---------------------- output and render! ---------------------------
 	ros::Duration timeALL = ros::Time::now() - startedFunc;
-	if(isVeryGood) snprintf(charBuf,1000,"\nQuality: best            ");
 	else if(isGood) snprintf(charBuf,1000,"\nQuality: good           ");
 	else snprintf(charBuf,1000,"\nQuality: lost                       ");
 	
@@ -579,11 +574,6 @@ void LSDWrapper::HandleFrame()
 			snprintf(charBuf+63,800, "y: %.2f",PTAMResultTransformed[5]);
 			msg += charBuf;
 
-
-			snprintf(charBuf,1000,"\nLSD WiggleDist:              ");
-			snprintf(charBuf+18,800, "%.3f                          ",mpMapMaker->lastWiggleDist);
-			snprintf(charBuf+24,800, "MetricDist: %.3f",mpMapMaker->lastMetricDist);
-			msg += charBuf;
 		}
 	}
 
@@ -631,7 +621,7 @@ void LSDWrapper::HandleFrame()
 		myGLWindow->DrawCaption(msg);
 	}
 
-	lastPTAMResultRaw = PTAMResultSE3; 
+	lastLSDResultRaw = LSDResultSE3; 
 	// ------------------------ LOG --------------------------------------
 	// log!
 	if(node->logfilePTAM != NULL)
@@ -651,6 +641,8 @@ void LSDWrapper::HandleFrame()
 
 }
 
+
+/************************************************************************/
 
 // Draw the reference grid to give the user an idea of wether tracking is OK or not.
 void LSDWrapper::renderGrid(TooN::SE3<> camFromWorld)
@@ -943,6 +935,8 @@ void LSDWrapper::on_key_down(int key)
 
 }
 
+
+// Handle commands should be completely changed for LSD but of a low priority
 
 // reached by typing "df p COMMAND" into console
 bool LSDWrapper::handleCommand(std::string s)
