@@ -332,6 +332,7 @@ void LSDWrapper::HandleFrame()
 		isVeryGood = false;
 	}
 
+	//If the last tracking step result is lost
 	else if(lsdTracker->lastStepResult == LOST)
 		isGood = isVeryGood = false;
 
@@ -381,6 +382,8 @@ void LSDWrapper::HandleFrame()
 
 
 
+
+
 	TooN::Vector<10> filterPosePostLSD;
 	// --------------------------- scale estimation & update filter (REDONE) -----------------------------
 	// interval length is always between 1s and 2s, to enshure approx. same variances.
@@ -404,11 +407,11 @@ void LSDWrapper::HandleFrame()
 	filterPosePostLSD = filter->getCurrentPoseSpeedAsVec();
 	pthread_mutex_unlock( &filter->filter_CS );
 
-	TooN::Vector<6> filterPosePostPTAMBackTransformed = filter->backTransformPTAMObservation(filterPosePostPTAM.slice<0,6>());
+	TooN::Vector<6> filterPosePostPTAMBackTransformed = filter->backTransformLSDObservation(filterPosePostLSD.slice<0,6>());
 
 
 	// if interval is started: add one step.
-	int includedTime = mimFrameTime_workingCopy - ptamPositionForScaleTakenTimestamp;
+	int includedTime = mimFrameTime_workingCopy - lsdPositionForScaleTakenTimestamp;
 	if(framesIncludedForScaleXYZ >= 0) framesIncludedForScaleXYZ++;
 
 	// if interval is overdue: reset & dont add
@@ -424,10 +427,10 @@ void LSDWrapper::HandleFrame()
 
 		if(includedTime >= 2000 && framesIncludedForScaleXYZ > 1)	// ADD! (if too many, was resetted before...)
 		{
-			TooN::Vector<3> diffPTAM = filterPosePostPTAMBackTransformed.slice<0,3>() - PTAMPositionForScale;
+			TooN::Vector<3> diffLSD = filterPosePostLSDBackTransformed.slice<0,3>() - LSDPositionForScale;
 			bool zCorrupted, allCorrupted;
 			float pressureStart = 0, pressureEnd = 0;
-			TooN::Vector<3> diffIMU = evalNavQue(ptamPositionForScaleTakenTimestamp - filter->delayVideo + filter->delayXYZ,mimFrameTime_workingCopy - filter->delayVideo + filter->delayXYZ,&zCorrupted, &allCorrupted, &pressureStart, &pressureEnd);
+			TooN::Vector<3> diffIMU = evalNavQue(lsdPositionForScaleTakenTimestamp - filter->delayVideo + filter->delayXYZ,mimFrameTime_workingCopy - filter->delayVideo + filter->delayXYZ,&zCorrupted, &allCorrupted, &pressureStart, &pressureEnd);
 
 			pthread_mutex_lock(&logScalePairs_CS);
 			if(logfileScalePairs != 0)
@@ -435,7 +438,7 @@ void LSDWrapper::HandleFrame()
 						pressureStart << " " <<
 						pressureEnd << " " <<
 						diffIMU[2] << " " <<
-						diffPTAM[2] << std::endl;
+						diffLSD[2] << std::endl;
 			pthread_mutex_unlock(&logScalePairs_CS);
 
 
@@ -445,11 +448,12 @@ void LSDWrapper::HandleFrame()
 				double xyFactor = 0.05;
 				double zFactor = zCorrupted ? 0 : 3;
 			
-				diffPTAM.slice<0,2>() *= xyFactor; diffPTAM[2] *= zFactor;
+				diffLSD.slice<0,2>() *= xyFactor; diffLSD[2] *= zFactor;
 				diffIMU.slice<0,2>() *= xyFactor; diffIMU[2] *= zFactor;
 
-				filter->updateScaleXYZ(diffPTAM, diffIMU, PTAMResult.slice<0,3>());
-				mpMapMaker->currentScaleFactor = filter->getCurrentScales()[0];
+				filter->updateScaleXYZ(diffLSD, diffIMU, LSDResult.slice<0,3>());
+				//currentkeyframe scale set here.
+				currentKeyFrame->getScaledCamToWorld().scale() = filter->getCurrentScales()[0];
 			}
 			framesIncludedForScaleXYZ = -1;	// causing reset afterwards
 		}
@@ -457,23 +461,13 @@ void LSDWrapper::HandleFrame()
 		if(framesIncludedForScaleXYZ == -1)	// RESET!
 		{
 			framesIncludedForScaleXYZ = 0;
-			PTAMPositionForScale = filterPosePostPTAMBackTransformed.slice<0,3>();
+			LSDPositionForScale = filterPosePostLSDBackTransformed.slice<0,3>();
 			//predIMUOnlyForScale->resetPos();	// also resetting z corrupted flag etc. (NOT REquired as reset is done in eval)
-			ptamPositionForScaleTakenTimestamp = mimFrameTime_workingCopy;
+			lsdPositionForScaleTakenTimestamp = mimFrameTime_workingCopy;
 		}
 	}
 	
-
-	if(lockNextFrame && isGood)
-	{
-		filter->scalingFixpoint = PTAMResult.slice<0,3>();
-		lockNextFrame = false;	
-		//filter->useScalingFixpoint = true;
-
-		snprintf(charBuf,500,"locking scale fixpoint to %.3f %.3f %.3f",PTAMResultTransformed[0], PTAMResultTransformed[1], PTAMResultTransformed[2]);
-		ROS_INFO(charBuf);
-		node->publishCommand(std::string("u l ")+charBuf);
-	}
+	//Map locking removed
 
 	/**** removed
 	// ----------------------------- Take KF? -----------------------------------
@@ -484,7 +478,8 @@ void LSDWrapper::HandleFrame()
 
 	 
 	// ----------------------------- update shallow map for LSD SLAM-----------------
-	if(!mapLocked && rand()%5==0)
+	//Map locking removed
+	if(rand()%5==0)
 	{
 		pthread_mutex_lock(&shallowMapCS);
 
@@ -492,7 +487,7 @@ void LSDWrapper::HandleFrame()
 		mapPointsTransformed.clear();
 		keyFramesTransformed.clear();
 
-		for(unsigned int i=0;i<mpMap->vpKeyFrames.size();i++)
+		for(unsigned int i=0;i<keyFrameGraph->allFramePoses.size();i++)
 		{
 			predConvert->setPosSE3_globalToDrone(predConvert->frontToDroneNT * mpMap->vpKeyFrames[i]->se3CfromW);
 			TooN::Vector<6> CamPos = TooN::makeVector(predConvert->x, predConvert->y, predConvert->z, predConvert->roll, predConvert->pitch, predConvert->yaw);
@@ -504,13 +499,14 @@ void LSDWrapper::HandleFrame()
 		TooN::Vector<3> LSDOffsets = filter->getCurrentOffsets().slice<0,3>();
 
 
-		//Converting the local points by PTAM to the world perspective by multiplying by the scale
-		for(unsigned int i=0;i<mpMap->vpPoints.size();i++)
+		//Converting the local points by LSD to the world perspective by multiplying by the scaleng
+		//A little confusion b/w using keyframegraph or currentkeyframe
+		for(unsigned int i=0;i<currentKeyFrame->numPoints;i++)
 		{
 			TooN::Vector<3> pos = (mpMap->vpPoints)[i]->v3WorldPos;
-			pos[0] *= PTAMScales[0];
-			pos[1] *= PTAMScales[1];
-			pos[2] *= PTAMScales[2];
+			pos[0] *= LSDScales[0];
+			pos[1] *= LSDScales[1];
+			pos[2] *= LSDScales[2];
 			pos += PTAMOffsets;
 			mapPointsTransformed.push_back(pos);
 		}
@@ -550,7 +546,7 @@ void LSDWrapper::HandleFrame()
 	else snprintf(charBuf,1000,"\nQuality: lost                       ");
 	
 	snprintf(charBuf+20,800, "scale: %.3f (acc: %.3f)                            ",filter->getCurrentScales()[0],(double)filter->getScaleAccuracy());
-	snprintf(charBuf+50,800, "PTAM time: %i ms                            ",(int)(1000*timeALL.toSec()));
+	snprintf(charBuf+50,800, "LSD time: %i ms                            ",(int)(1000*timeALL.toSec()));
 	snprintf(charBuf+68,800, "(%i ms total)  ",(int)(1000*timeALL.toSec()));
 	if(mapLocked) snprintf(charBuf+83,800, "m.l. ");
 	else snprintf(charBuf+83,800, "     ");
@@ -564,7 +560,7 @@ void LSDWrapper::HandleFrame()
 	{
 		if(drawUI == UI_DEBUG)
 		{
-			snprintf(charBuf,1000,"\nPTAM Diffs:              ");
+			snprintf(charBuf,1000,"\nLSD Diffs:              ");
 			snprintf(charBuf+13,800, "x: %.3f                          ",diffs[0]);
 			snprintf(charBuf+23,800, "y: %.3f                          ",diffs[1]);
 			snprintf(charBuf+33,800, "z: %.3f                          ",diffs[2]);
@@ -574,7 +570,7 @@ void LSDWrapper::HandleFrame()
 			msg += charBuf;
 
 
-			snprintf(charBuf,1000,"\nPTAM Pose:              ");
+			snprintf(charBuf,1000,"\nLSD Pose:              ");
 			snprintf(charBuf+13,800, "x: %.3f                          ",PTAMResultTransformed[0]);
 			snprintf(charBuf+23,800, "y: %.3f                          ",PTAMResultTransformed[1]);
 			snprintf(charBuf+33,800, "z: %.3f                          ",PTAMResultTransformed[2]);
@@ -584,7 +580,7 @@ void LSDWrapper::HandleFrame()
 			msg += charBuf;
 
 
-			snprintf(charBuf,1000,"\nPTAM WiggleDist:              ");
+			snprintf(charBuf,1000,"\nLSD WiggleDist:              ");
 			snprintf(charBuf+18,800, "%.3f                          ",mpMapMaker->lastWiggleDist);
 			snprintf(charBuf+24,800, "MetricDist: %.3f",mpMapMaker->lastMetricDist);
 			msg += charBuf;
@@ -685,7 +681,7 @@ void LSDWrapper::renderGrid(TooN::SE3<> camFromWorld)
 			if(v3Cam[2] < 0.001)
 				v3Cam = TooN::makeVector(100000*v3Cam[0],100000*v3Cam[1],0.0001);
 
-s			imVertices[i][j] = mpCamera->Project(TooN::project(v3Cam))*0.5;
+			imVertices[i][j] = mpCamera->Project(TooN::project(v3Cam))*0.5;
 		}
 
 	glEnable(GL_LINE_SMOOTH);

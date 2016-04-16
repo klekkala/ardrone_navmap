@@ -815,7 +815,7 @@ TooN::Vector<6> DroneKalmanFilter::transformLSDObservation(TooN::Vector<6> obs)
 
 	return obs;
 }
-TooN::Vector<6> DroneKalmanFilter::backTransformPTAMObservation(TooN::Vector<6> obs)
+TooN::Vector<6> DroneKalmanFilter::backTransformLSDObservation(TooN::Vector<6> obs)
 {
 	obs[3] -= roll_offset;
 	obs[4] -= pitch_offset;
