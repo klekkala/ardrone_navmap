@@ -79,10 +79,6 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 
 void LSDWrapper::ResetInternal()
 {
-	
-//PTAM stuff
-	mimFrameBW.resize(CVD::ImageRef(frameWidth, frameHeight));
-	mimFrameBW_workingCopy.resize(CVD::ImageRef(frameWidth, frameHeight));
 
 
 	if(inputStream != 0) delete inputStream;
@@ -111,10 +107,10 @@ void LSDWrapper::ResetInternal()
 	inputStream->setCalibration(fileH);
 	fleH.close();
 
-	
+	inputStream->run();
 	outputWrapper = new ROSOutput3DWrapper(inputStream->width(), inputStream->height());
 	LiveSLAMWrapper lsdTracker(inputStream, outputWrapper);
-	
+
 	predConvert->setPosRPY(0,0,0,0,0,0);
 	predIMUOnlyForScale->setPosRPY(0,0,0,0,0,0);
 
@@ -166,6 +162,9 @@ void LSDWrapper::run()
 	while(!newImageAvailable)
 		usleep(100000);	// sleep 100ms
 
+	// read image height and width
+	frameWidth = mimFrameBW.size().x;
+	frameHeight = mimFrameBW.size().y;
 
 	ResetInternal();
 
@@ -175,17 +174,10 @@ void LSDWrapper::run()
 	node->publishCommand(std::string("u l ")+charBuf);
 
 	// create window
-    myGLWindow = new GLWindow2(CVD::ImageRef(frameWidth,frameHeight), "PTAM Drone Camera Feed", this);
-	myGLWindow->set_title("PTAM Drone Camera Feed");
+	Util::displayImage("LSD SLAM Drone Camera Feed", image.data);
 
+	// Framewidth size removed
 	changeSizeNextRender = true;
-
-	//Set the framewidth
-	if(frameWidth < 640)
-		desiredWindowSize = CVD::ImageRef(frameWidth*2,frameHeight*2);
-	else
-		desiredWindowSize = CVD::ImageRef(frameWidth,frameHeight);
-
 
 	boost::unique_lock<boost::mutex> lock(new_frame_signal_mutex);
 
@@ -219,7 +211,6 @@ void LSDWrapper::run()
 	lock.unlock();
 	delete myGLWindow;
 }
-
 
 
 
@@ -271,22 +262,11 @@ void LSDWrapper::HandleFrame()
 		}
 		waitLock.unlock();
 		
-		
-	if(fullResetRequested)
-	{
-		resetAll();
-		fullResetRequested = false;
-		if (!(imageStream->getBuffer()->size() > 0))
-			continue;
-	}
-		
-	// process image
+	
+	// Track image and get current pose estimate
 	/***Note: image is of type imagedata from lsd-slam change it***/
-	newImageCallback(mimFrameBW_workingCopy);
-
-
-	// LSD slam tracking
-	TooN::SE3<> LSDResultSE3 = lsdTracker->getCurrentPoseEstimate();
+	TooN::SE3<> LSDResultSE3;
+	LSDResultSE3 = lsdTracker.newImageCallback(mimFrameBW_workingCopy.data, mimFrameBW_workingCopy.time);
 
 	ros::Duration timePTAM= ros::Time::now() - startedPTAM;
 
@@ -851,14 +831,8 @@ void LSDWrapper::newImage(sensor_msgs::ImageConstPtr img)
 
 	//mimFrameTime = getMS(img->header.stamp);
 	mimFrameSEQ = img->header.seq;
+	mimFrameBW = cv->image;
 
-	// copy to mimFrame.
-	// TODO: make this threadsafe (save pointer only and copy in HandleFrame)
-	if(mimFrameBW.size().x != img->width || mimFrameBW.size().y != img->height)
-		mimFrameBW.resize(CVD::ImageRef(img->width, img->height));
-
-	// copy to mimFrameBW which is of the struct Timestampedobject with a Template <cv::Mat> and Timestamp
-	memcpy(mimFrameBW.data(),cv_ptr->image.data,img->width * img->height);
 	newImageAvailable = true;
 
 	lock.unlock();

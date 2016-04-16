@@ -118,6 +118,8 @@ void LiveSLAMWrapper::Loop()
 
 void LiveSLAMWrapper::newImageCallback(const cv::Mat& img, Timestamp imgTime)
 {
+
+	TooN::SE3<> LSDResultSE3;
 	++ imageSeqNumber;
 
 	// Convert image to grayscale, if necessary
@@ -143,6 +145,9 @@ void LiveSLAMWrapper::newImageCallback(const cv::Mat& img, Timestamp imgTime)
 	{
 		monoOdometry->trackFrame(grayImg.data,imageSeqNumber,false,imgTime.toSec());
 	}
+	LSDResultSE3 = monoOdoemtry->getCurrentPoseEstimate();
+
+	return LSDResultSE3;
 }
 
 void LiveSLAMWrapper::logCameraPose(const SE3& camToWorld, double time)
