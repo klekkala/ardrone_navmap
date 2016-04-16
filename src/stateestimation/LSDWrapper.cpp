@@ -272,7 +272,7 @@ void LSDWrapper::HandleFrame()
 
 	TooN::Vector<6> LSDResultSE3TwistOrg = LSDResultSE3.ln();
 
-	node->publishTf(lsdTracker->getCurrentPoseEstimate(), mimFrameTimeRos_workingCopy, mimFrameSEQ_workingCopy,"cam_front");
+	node->publishTf(LSDResultSE3, mimFrameTimeRos_workingCopy, mimFrameSEQ_workingCopy,"cam_front");
 
 
 	// 1. multiply from left by frontToDroneNT.
@@ -295,15 +295,9 @@ void LSDWrapper::HandleFrame()
 	for(int i=0;1<1;i++) diffs[i] = abs(diffs[i]);
 
 
-	if(filter->getNumGoodPTAMObservations() < 10 && mpMap->IsGood())
-	{
-		isGood = true;
-		isVeryGood = false;
-	}
-
 	//If the last tracking step result is lost
 	else if(lsdTracker->lastStepResult == LOST)
-		isGood = isVeryGood = false;
+		isGood = false;
 
 	else
 	{

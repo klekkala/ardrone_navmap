@@ -415,7 +415,7 @@ void DroneKalmanFilter::observeIMU_RPY(const ardrone_autonomy::Navdata* nav)
 
 
 
-void DroneKalmanFilter::observePTAM(TooN::Vector<6> pose)
+void DroneKalmanFilter::observeLSD(TooN::Vector<6> pose)
 {
 
 	// ----------------- observe xyz -----------------------------
@@ -426,10 +426,10 @@ void DroneKalmanFilter::observePTAM(TooN::Vector<6> pose)
 		sync_rpy(pose[3], pose[4], pose[5]);
 	}
 
-	last_PTAM_pose = TooN::makeVector(pose[0], pose[1], pose[2]);
+	last_LSD_pose = TooN::makeVector(pose[0], pose[1], pose[2]);
 
 
-	pose.slice<0,3>() = transformPTAMObservation(pose[0], pose[1], pose[2]);
+	pose.slice<0,3>() = transformLSDObservation(pose[0], pose[1], pose[2]);
 
 	if(offsets_xyz_initialized)
 	{
@@ -928,7 +928,7 @@ void DroneKalmanFilter::addLSDObservation(TooN::Vector<6> trans, int time)
 	if(time > predictdUpToTimestamp)
 		predictUpTo(time, true,true);
 
-	observePTAM(trans);
+	observeLSD(trans);
 	numGoodPTAMObservations++;
 }
 void DroneKalmanFilter::addFakeLSDObservation(int time)
