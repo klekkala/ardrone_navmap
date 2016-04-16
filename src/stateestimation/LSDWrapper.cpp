@@ -75,12 +75,6 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 	drawUI = UI_PRES;
 	frameWidth = frameHeight = 0;
 
-	minKFDist = 0;
-	minKFWiggleDist = 0;
-	minKFTimeDist = 0;
-
-	maxKF = 60;
-
 	logfileScalePairs = 0;
 }
 
@@ -132,7 +126,7 @@ void LSDWrapper::ResetInternal()
 	predConvert->setPosRPY(0,0,0,0,0,0);
 	predIMUOnlyForScale->setPosRPY(0,0,0,0,0,0);
 
-	resetPTAMRequested = false;
+	resetLSDRequested = false;
 	forceKF = false;
 	isGoodCount = 0;
 	lastAnimSentClock = 0;
@@ -337,13 +331,10 @@ void LSDWrapper::HandleFrame()
 		isGood = true;
 		isVeryGood = false;
 	}
-	else if(mpTracker->lastStepResult == mpTracker->I_FIRST ||
-		mpTracker->lastStepResult == mpTracker->I_SECOND || 
-		mpTracker->lastStepResult == mpTracker->I_FAILED ||
-		mpTracker->lastStepResult == mpTracker->T_LOST ||
-		mpTracker->lastStepResult == mpTracker->NOT_TRACKING ||
-		mpTracker->lastStepResult == mpTracker->INITIALIZING)
+
+	else if(lsdTracker->lastStepResult == LOST)
 		isGood = isVeryGood = false;
+
 	else
 	{
 		// some chewy heuristic when to add and when not to.
@@ -403,14 +394,14 @@ void LSDWrapper::HandleFrame()
 
 	// TODO: make shure filter is handled properly with permanent roll-forwards.
 	pthread_mutex_lock( &filter->filter_CS );
-	if(filter->usePTAM && isGoodCount >= 3)
+	if(filter->useLSD && isGoodCount >= 3)
 	{
-		filter->addPTAMObservation(LSDResult,mimFrameTime_workingCopy-filter->delayVideo);
+		filter->addLSDObservation(LSDResult,mimFrameTime_workingCopy-filter->delayVideo);
 	}
 	else
-		filter->addFakePTAMObservation(mimFrameTime_workingCopy-filter->delayVideo);
+		filter->addFakeLSDObservation(mimFrameTime_workingCopy-filter->delayVideo);
 
-	filterPosePostPTAM = filter->getCurrentPoseSpeedAsVec();
+	filterPosePostLSD = filter->getCurrentPoseSpeedAsVec();
 	pthread_mutex_unlock( &filter->filter_CS );
 
 	TooN::Vector<6> filterPosePostPTAMBackTransformed = filter->backTransformPTAMObservation(filterPosePostPTAM.slice<0,6>());

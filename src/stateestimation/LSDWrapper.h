@@ -18,8 +18,8 @@
  *  You should have received a copy of the GNU General Public License
  *  along with tum_ardrone.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __PTAMWRAPPER_H
-#define __PTAMWRAPPER_H
+#ifndef __LSDWRAPPER_H
+#define __LSDWRAPPER_H
 
 #include "GLWindow2.h"
 #include "TooN/se3.h"

@@ -923,7 +923,7 @@ void DroneKalmanFilter::setCurrentScales(TooN::Vector<3> scales)
 	initialScaleSet = scales[0];
 }
 
-void DroneKalmanFilter::addPTAMObservation(TooN::Vector<6> trans, int time)
+void DroneKalmanFilter::addLSDObservation(TooN::Vector<6> trans, int time)
 {
 	if(time > predictdUpToTimestamp)
 		predictUpTo(time, true,true);
@@ -931,7 +931,7 @@ void DroneKalmanFilter::addPTAMObservation(TooN::Vector<6> trans, int time)
 	observePTAM(trans);
 	numGoodPTAMObservations++;
 }
-void DroneKalmanFilter::addFakePTAMObservation(int time)
+void DroneKalmanFilter::addFakeLSDObservation(int time)
 {
 	if(time > predictdUpToTimestamp)
 		predictUpTo(time, true,true);
