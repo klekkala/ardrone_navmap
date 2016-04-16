@@ -571,11 +571,11 @@ void LSDWrapper::HandleFrame()
 
 
 			snprintf(charBuf,1000,"\nLSD Pose:              ");
-			snprintf(charBuf+13,800, "x: %.3f                          ",PTAMResultTransformed[0]);
-			snprintf(charBuf+23,800, "y: %.3f                          ",PTAMResultTransformed[1]);
-			snprintf(charBuf+33,800, "z: %.3f                          ",PTAMResultTransformed[2]);
-			snprintf(charBuf+43,800, "r: %.2f                          ",PTAMResultTransformed[3]);
-			snprintf(charBuf+53,800, "p: %.2f                          ",PTAMResultTransformed[4]);
+			snprintf(charBuf+13,800, "x: %.3f                          ",LSDResultTransformed[0]);
+			snprintf(charBuf+23,800, "y: %.3f                          ",LSDResultTransformed[1]);
+			snprintf(charBuf+33,800, "z: %.3f                          ",LSDResultTransformed[2]);
+			snprintf(charBuf+43,800, "r: %.2f                          ",LSDResultTransformed[3]);
+			snprintf(charBuf+53,800, "p: %.2f                          ",LSDResultTransformed[4]);
 			snprintf(charBuf+63,800, "y: %.2f",PTAMResultTransformed[5]);
 			msg += charBuf;
 
