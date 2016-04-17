@@ -367,7 +367,7 @@ void LSDWrapper::HandleFrame()
 	filterPosePostLSD = filter->getCurrentPoseSpeedAsVec();
 	pthread_mutex_unlock( &filter->filter_CS );
 
-	TooN::Vector<6> filterPosePostPTAMBackTransformed = filter->backTransformLSDObservation(filterPosePostLSD.slice<0,6>());
+	TooN::Vector<6> filterPosePostLSDBackTransformed = filter->backTransformLSDObservation(filterPosePostLSD.slice<0,6>());
 
 
 	// if interval is started: add one step.
@@ -436,7 +436,7 @@ void LSDWrapper::HandleFrame()
 	removed ******/
 
 
-	 
+/*	 
 	// ----------------------------- update shallow map for LSD SLAM-----------------
 	//Map locking removed
 	if(rand()%5==0)
@@ -497,7 +497,7 @@ void LSDWrapper::HandleFrame()
 
 	}
 
-
+*/
 
 	// ---------------------- output and render! ---------------------------
 	ros::Duration timeALL = ros::Time::now() - startedFunc;
@@ -507,7 +507,7 @@ void LSDWrapper::HandleFrame()
 	snprintf(charBuf+20,800, "scale: %.3f (acc: %.3f)                            ",filter->getCurrentScales()[0],(double)filter->getScaleAccuracy());
 	snprintf(charBuf+50,800, "LSD time: %i ms                            ",(int)(1000*timeALL.toSec()));
 	snprintf(charBuf+68,800, "(%i ms total)  ",(int)(1000*timeALL.toSec()));
-	if(mapLocked) snprintf(charBuf+83,800, "m.l. ");
+	if() snprintf(charBuf+83,800, "m.l. ");
 	else snprintf(charBuf+83,800, "     ");
 	if(filter->allSyncLocked) snprintf(charBuf+88,800, "s.l. ");
 	else snprintf(charBuf+88,800, "     ");
@@ -515,7 +515,7 @@ void LSDWrapper::HandleFrame()
 
 	msg += charBuf;
 
-	if(mpMap->IsGood())
+	if()
 	{
 		if(drawUI == UI_DEBUG)
 		{
@@ -544,7 +544,7 @@ void LSDWrapper::HandleFrame()
 	if(drawUI != UI_NONE)
 	{
 		// render grid
-		predConvert->setPosRPY(filterPosePostPTAM[0], filterPosePostPTAM[1], filterPosePostPTAM[2], filterPosePostPTAM[3], filterPosePostPTAM[4], filterPosePostPTAM[5]);
+		predConvert->setPosRPY(filterPosePostLSD[0], filterPosePostLSD[1], filterPosePostLSD[2], filterPosePostLSD[3], filterPosePostLSD[4], filterPosePostLSD[5]);
 
 		//renderGrid(predConvert->droneToFrontNT * predConvert->globaltoDrone);
 		//renderGrid(PTAMResultSE3);

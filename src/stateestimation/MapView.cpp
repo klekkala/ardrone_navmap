@@ -74,8 +74,8 @@ void MapView::stopSystem()
 void MapView::run()
 {
 	sleep(1000);
-    myGLWindow = new GLWindow2(CVD::ImageRef(640,480), "PTAM Drone Map View",this);
-	myGLWindow->set_title("PTAM Drone Map View");
+    myGLWindow = new GLWindow2(CVD::ImageRef(640,480), "LSD Drone Map View",this);
+	myGLWindow->set_title("LSD Drone Map View");
 
 	while(keepRunning)
 	{

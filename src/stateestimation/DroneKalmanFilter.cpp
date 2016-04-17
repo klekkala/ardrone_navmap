@@ -27,12 +27,12 @@ const double varSpeedObservation_xy = 2*2;
 const double varPoseObservation_xy = 0.2*0.2;
 const double varAccelerationError_xy = 8*8;
 
-const double varPoseObservation_z_PTAM = 0.08*0.08;
+const double varPoseObservation_z_LSD = 0.08*0.08;
 const double varPoseObservation_z_IMU = 0.25*0.25;
-const double varPoseObservation_z_IMU_NO_PTAM = 0.1*0.1;
+const double varPoseObservation_z_IMU_NO_LSD = 0.1*0.1;
 const double varAccelerationError_z = 1*1;
 
-const double varPoseObservation_rp_PTAM = 3*3;
+const double varPoseObservation_rp_LSD = 3*3;
 const double varPoseObservation_rp_IMU = 1*1;
 const double varSpeedError_rp = 360*360 * 16;	// increased because prediction based on control command is damn inaccurate.
 
@@ -152,7 +152,7 @@ void DroneKalmanFilter::reset()
 	lastIMU_dronetime = 0;
 
 	// clear PTAM
-	clearPTAM();
+	clearLSD();
 
 	// clear IMU-queus
 	navdataQueue->clear();
@@ -168,7 +168,7 @@ void DroneKalmanFilter::reset()
 	node->publishCommand("u l EKF has been reset to zero.");
 }
 
-void DroneKalmanFilter::clearPTAM()
+void DroneKalmanFilter::clearLSD()
 {
 	// offsets and scales are not initialized.
 	offsets_xyz_initialized = scale_xyz_initialized = false;
@@ -176,8 +176,8 @@ void DroneKalmanFilter::clearPTAM()
 	roll_offset = pitch_offset = yaw_offset = x_offset = y_offset = z_offset = 0;
 
 	xyz_sum_IMUxIMU = 0.1;
-	xyz_sum_PTAMxPTAM = 0.1;
-	xyz_sum_PTAMxIMU = 0.1;
+	xyz_sum_LSDxLSD = 0.1;
+	xyz_sum_LSDxIMU = 0.1;
 	scalePairs->clear();
 	scalePairsIn = 1;
 	scalePairsOut = 0;
@@ -185,7 +185,7 @@ void DroneKalmanFilter::clearPTAM()
 	rp_offset_framesContributed = 0;
 
 	// set statistic parameters to zero
-	numGoodPTAMObservations = 0;
+	numGoodLSDObservations = 0;
 
 	// indicates that last PTAM frame was not valid
 	lastPosesValid = false;
@@ -331,7 +331,7 @@ void DroneKalmanFilter::observeIMU_XYZ(const ardrone_autonomy::Navdata* nav)
 
 			if(abs(imuHeightDiff) < 0.110)	// jumps of more than 150mm in 40ms are ignored
 			{
-				z.observePose(observedHeight,varPoseObservation_z_IMU_NO_PTAM);
+				z.observePose(observedHeight,varPoseObservation_z_IMU_NO_LSD);
 				lastdZ = observedHeight;
 			}
 			else	// there was a jump: dont observe anything, but set new baselines.
@@ -440,14 +440,14 @@ void DroneKalmanFilter::observeLSD(TooN::Vector<6> pose)
 	// observe z
 	if(offsets_xyz_initialized)
 	{
-		z.observePose(pose[2], varPoseObservation_z_PTAM);
+		z.observePose(pose[2], varPoseObservation_z_LSD);
 	}
 
 	// observe!
 	if(rp_offset_framesContributed > 1)
 	{
-		roll.observe(pose[3]+roll_offset,varPoseObservation_rp_PTAM);
-		pitch.observe(pose[4]+pitch_offset,varPoseObservation_rp_PTAM);
+		roll.observe(pose[3]+roll_offset,varPoseObservation_rp_LSD);
+		pitch.observe(pose[4]+pitch_offset,varPoseObservation_rp_LSD);
 
 		yaw.state[0] =  angleFromTo(yaw.state[0],-180,180);
 		double observedYaw = pose[5]+yaw_offset;
@@ -509,21 +509,21 @@ void DroneKalmanFilter::flushScalePairs()
 	std::ofstream* fle = new std::ofstream();
 	fle->open ("scalePairs.txt");
 	for(unsigned int i=0;i<scalePairs->size();i++)
-		(*fle) << (*scalePairs)[i].ptam[0] << " " <<(*scalePairs)[i].ptam[1] << " " <<(*scalePairs)[i].ptam[2] << " " <<
+		(*fle) << (*scalePairs)[i].lsd[0] << " " <<(*scalePairs)[i].lsd[1] << " " <<(*scalePairs)[i].lsd[2] << " " <<
 			(*scalePairs)[i].imu[0] << " " << (*scalePairs)[i].imu[1] << " " << (*scalePairs)[i].imu[2] << std::endl;
 	fle->flush();
 	fle->close();
 	delete fle;
 }
 
-void DroneKalmanFilter::updateScaleXYZ(TooN::Vector<3> ptamDiff, TooN::Vector<3> imuDiff, TooN::Vector<3> OrgPtamPose)
+void DroneKalmanFilter::updateScaleXYZ(TooN::Vector<3> lsdDiff, TooN::Vector<3> imuDiff, TooN::Vector<3> OrgLsdPose)
 {
 	if(allSyncLocked) return;
 
-	ScaleStruct s = ScaleStruct(ptamDiff, imuDiff);
+	ScaleStruct s = ScaleStruct(lsdDiff, imuDiff);
 
 	// dont add samples that are way to small...
-	if(s.imuNorm < 0.05 || s.ptamNorm < 0.05) return;
+	if(s.imuNorm < 0.05 || s.lsdNorm < 0.05) return;
 
 
 	// update running sums
@@ -568,12 +568,12 @@ void DroneKalmanFilter::updateScaleXYZ(TooN::Vector<3> ptamDiff, TooN::Vector<3>
 			sumPI += (*scalePairs)[i].pi;
 
 			sumIIxy += (*scalePairs)[i].imu[0]*(*scalePairs)[i].imu[0] + (*scalePairs)[i].imu[1]*(*scalePairs)[i].imu[1];
-			sumPPxy += (*scalePairs)[i].ptam[0]*(*scalePairs)[i].ptam[0] + (*scalePairs)[i].ptam[1]*(*scalePairs)[i].ptam[1];
-			sumPIxy += (*scalePairs)[i].ptam[0]*(*scalePairs)[i].imu[0] + (*scalePairs)[i].ptam[1]*(*scalePairs)[i].imu[1];
+			sumPPxy += (*scalePairs)[i].lsd[0]*(*scalePairs)[i].lsd[0] + (*scalePairs)[i].lsd[1]*(*scalePairs)[i].lsd[1];
+			sumPIxy += (*scalePairs)[i].lsd[0]*(*scalePairs)[i].imu[0] + (*scalePairs)[i].lsd[1]*(*scalePairs)[i].imu[1];
 		
 			sumIIz += (*scalePairs)[i].imu[2]*(*scalePairs)[i].imu[2];
-			sumPPz += (*scalePairs)[i].ptam[2]*(*scalePairs)[i].ptam[2];
-			sumPIz += (*scalePairs)[i].ptam[2]*(*scalePairs)[i].imu[2];
+			sumPPz += (*scalePairs)[i].lsd[2]*(*scalePairs)[i].lsd[2];
+			sumPIz += (*scalePairs)[i].lsd[2]*(*scalePairs)[i].imu[2];
 
 			numIn++;
 		}
@@ -586,12 +586,12 @@ void DroneKalmanFilter::updateScaleXYZ(TooN::Vector<3> ptamDiff, TooN::Vector<3>
 		}
 	}
 	xyz_sum_IMUxIMU = sumII;
-	xyz_sum_PTAMxPTAM = sumPP;
-	xyz_sum_PTAMxIMU = sumPI;
+	xyz_sum_LSDxLSD = sumPP;
+	xyz_sum_LSDxIMU = sumPI;
 
 	double scale_Filtered = (*scalePairs)[0].computeEstimator(sumPP,sumII,sumPI,0.2,0.01);
 	double scale_Unfiltered = (*scalePairs)[0].computeEstimator(sumPP+totSumPP,sumII+totSumII,sumPI+totSumPI,0.2,0.01);
-	double scale_PTAMSmallVar = (*scalePairs)[0].computeEstimator(sumPP+totSumPP,sumII+totSumII,sumPI+totSumPI,0.00001,1);
+	double scale_LSDSmallVar = (*scalePairs)[0].computeEstimator(sumPP+totSumPP,sumII+totSumII,sumPI+totSumPI,0.00001,1);
 	double scale_IMUSmallVar = (*scalePairs)[0].computeEstimator(sumPP+totSumPP,sumII+totSumII,sumPI+totSumPI,1,0.00001);
 
 	
@@ -604,7 +604,7 @@ void DroneKalmanFilter::updateScaleXYZ(TooN::Vector<3> ptamDiff, TooN::Vector<3>
 
 	printf("scale: in: %i; out: %i, filt: %.3f; xyz: %.1f < %.1f < %.1f; xy: %.1f < %.1f < %.1f; z: %.1f < %.1f < %.1f;\n", 
 		numIn, numOut, scale_Filtered, 
-		scale_PTAMSmallVar, scale_Unfiltered, scale_IMUSmallVar,
+		scale_LSDSmallVar, scale_Unfiltered, scale_IMUSmallVar,
 		(*scalePairs)[0].computeEstimator(sumPPxy,sumIIxy,sumPIxy,0.00001,1),
 		scale_Filtered_xy,
 		(*scalePairs)[0].computeEstimator(sumPPxy,sumIIxy,sumPIxy,1,0.00001),
@@ -633,16 +633,16 @@ void DroneKalmanFilter::updateScaleXYZ(TooN::Vector<3> ptamDiff, TooN::Vector<3>
 	else
 	{
 		// fix at current pos.
-		x_offset += (xyz_scale_old - xy_scale)*OrgPtamPose[0];
-		y_offset += (xyz_scale_old - xy_scale)*OrgPtamPose[1];
-		z_offset += (xyz_scale_old - z_scale)*OrgPtamPose[2];
+		x_offset += (xyz_scale_old - xy_scale)*OrgLsdPose[0];
+		y_offset += (xyz_scale_old - xy_scale)*OrgLsdPose[1];
+		z_offset += (xyz_scale_old - z_scale)*OrgLsdPose[2];
 	}
 	scale_xyz_initialized = true;
 }
 
 float DroneKalmanFilter::getScaleAccuracy()
 {
-	return 0.5 + 0.5*std::min(1.0,std::max(0.0,xyz_sum_PTAMxIMU * xy_scale/4));	// scale-corrected PTAM x IMU
+	return 0.5 + 0.5*std::min(1.0,std::max(0.0,xyz_sum_LSDxIMU * xy_scale/4));	// scale-corrected PTAM x IMU
 }
 
 
@@ -905,8 +905,8 @@ void DroneKalmanFilter::setCurrentScales(TooN::Vector<3> scales)
 	scale_from_xy = scale_from_z = scales[0];
 
 	xyz_sum_IMUxIMU = 0.2 * scales[0];
-	xyz_sum_PTAMxPTAM = 0.2 / scales[0];
-	xyz_sum_PTAMxIMU = 0.2;
+	xyz_sum_LSDxLSD = 0.2 / scales[0];
+	xyz_sum_LSDxIMU = 0.2;
 
 	(*scalePairs).clear();
 
@@ -929,7 +929,7 @@ void DroneKalmanFilter::addLSDObservation(TooN::Vector<6> trans, int time)
 		predictUpTo(time, true,true);
 
 	observeLSD(trans);
-	numGoodPTAMObservations++;
+	numGoodLSDObservations++;
 }
 void DroneKalmanFilter::addFakeLSDObservation(int time)
 {
