@@ -501,20 +501,20 @@ void EstimationNode::reSendInfo()
 {
 
 	// get ptam status string
-	std::string ptamStatus;
-	switch(lsdWrapper->PTAMStatus)
+	std::string lsdStatus;
+	switch(lsdWrapper->LSDStatus)
 	{
-	case lsdWrapper::PTAM_IDLE:
-		ptamStatus = "Idle";
+	case lsdWrapper::LSD_IDLE:
+		lsdStatus = "Idle";
 		break;
-	case lsdWrapper::PTAM_LOST:
-		ptamStatus = "Lost";
+	case lsdWrapper::LSD_LOST:
+		lsdStatus = "Lost";
 		break;
-	case lsdWrapper::PTAM_GOOD:
-		ptamStatus = "Good";
+	case lsdWrapper::LSD_GOOD:
+		lsdStatus = "Good";
 		break;
-	case lsdWrapper::PTAM_TOOKKF:
-		ptamStatus = "Best";
+	case lsdWrapper::LSD_TOOKKF:
+		lsdStatus = "Best";
 		break;
 	}
 
