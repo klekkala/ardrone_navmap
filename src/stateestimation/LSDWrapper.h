@@ -40,7 +40,7 @@ class Predictor;
 class DroneKalmanFilter;
 class DroneFlightModule;
 class EstimationNode;
-
+class KeyFrameGraph;
 
 typedef TooN::Vector<3> tvec3;
 typedef TooN::SE3<> tse3;
@@ -70,7 +70,7 @@ private:
 	DroneKalmanFilter* filter;
 	EstimationNode* node;
 
-	// -------------------- PTAM Related stuff --------------------------------
+	// -------------------- LSD Related stuff --------------------------------
 	char charBuf[1000];
 	std::string msg;
 

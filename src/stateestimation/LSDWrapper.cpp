@@ -461,7 +461,7 @@ void LSDWrapper::HandleFrame()
 
 		//Converting the local points by LSD to the world perspective by multiplying by the scaleng
 		//A little confusion b/w using keyframegraph or currentkeyframe
-		for(unsigned int i=0;i<currentKeyFrame->numPoints;i++)
+		for(unsigned int i=0;i<keyFrameGraph->numPoints;i++)
 		{
 			TooN::Vector<3> pos = (mpMap->vpPoints)[i]->v3WorldPos;
 			pos[0] *= LSDScales[0];
