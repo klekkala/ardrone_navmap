@@ -23,11 +23,6 @@
 #include "LSDWrapper.h"
 #include <cvd/gl_helpers.h>
 #include <gvars3/instances.h>
-#include "PTAM/ATANCamera.h"
-#include "PTAM/MapMaker.h"
-#include "PTAM/Tracker.h"
-#include "PTAM/Map.h"
-#include "PTAM/MapPoint.h"
 #include "../HelperFunctions.h"
 #include "Predictor.h"
 #include "DroneKalmanFilter.h"
@@ -46,10 +41,10 @@
 #include "LSD-SLAM/IOWrapper/ROS/ROSOutput3DWrapper.h"
 #include "LSD-SLAM/IOWrapper/ROS/rosReconfigure.h"
 
-pthread_mutex_t PTAMWrapper::navInfoQueueCS = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t PTAMWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t LSDWrapper::navInfoQueueCS = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t LSDWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
 
-pthread_mutex_t PTAMWrapper::logScalePairs_CS = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t LSDWrapper::logScalePairs_CS = PTHREAD_MUTEX_INITIALIZER;
 
 LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 {
@@ -126,7 +121,7 @@ void LSDWrapper::ResetInternal()
 }
 
 
-LSDWrapper::~PTAMWrapper(void)
+LSDWrapper::~LSDWrapper(void)
 {
 	if(lsdTracker != 0) delete lsdTracker;
 	if(predConvert != 0) delete predConvert;
@@ -229,7 +224,7 @@ void LSDWrapper::HandleFrame()
 	ros::Time startedFunc = ros::Time::now();
 
 	// reset?
-	if(resetPTAMRequested)
+	if(resetLSDRequested)
 		ResetInternal();
 
 
@@ -249,11 +244,11 @@ void LSDWrapper::HandleFrame()
 
 
 	// 1. transform with filter
-	TooN::Vector<6> LSDPoseGuess = filter->backTransformPTAMObservation(filterPosePreLSD.slice<0,6>());
+	TooN::Vector<6> LSDPoseGuess = filter->backTransformLSDObservation(filterPosePreLSD.slice<0,6>());
 	// 2. convert to se3
-	predConvert->setPosRPY(PTAMPoseGuess[0], PTAMPoseGuess[1], PTAMPoseGuess[2], PTAMPoseGuess[3], PTAMPoseGuess[4], PTAMPoseGuess[5]);
+	predConvert->setPosRPY(LSDPoseGuess[0], LSDPoseGuess[1], LSDPoseGuess[2], LSDPoseGuess[3], LSDPoseGuess[4], LSDPoseGuess[5]);
 	// 3. multiply with rotation matrix	
-	TooN::SE3<> PTAMPoseGuessSE3 = predConvert->droneToFrontNT * predConvert->globaltoDrone;
+	TooN::SE3<> LSDPoseGuessSE3 = predConvert->droneToFrontNT * predConvert->globaltoDrone;
 
 
 	boost::unique_lock<boost::recursive_mutex> waitLock(imageStream->getBuffer()->getMutex());
@@ -268,7 +263,7 @@ void LSDWrapper::HandleFrame()
 	TooN::SE3<> LSDResultSE3;
 	LSDResultSE3 = lsdTracker.newImageCallback(mimFrameBW_workingCopy.data, mimFrameBW_workingCopy.time);
 
-	ros::Duration timePTAM= ros::Time::now() - startedPTAM;
+	ros::Duration timeLSD= ros::Time::now() - startedLSD;
 
 	TooN::Vector<6> LSDResultSE3TwistOrg = LSDResultSE3.ln();
 
@@ -291,7 +286,7 @@ void LSDWrapper::HandleFrame()
 	bool isGood = true;
 	
 	// calculate absolute differences.
-	TooN::Vector<6> diffs = PTAMResultTransformed - filterPosePreLSD.slice<0,6>();
+	TooN::Vector<6> diffs = LSDResultTransformed - filterPosePreLSD.slice<0,6>();
 	for(int i=0;1<1;i++) diffs[i] = abs(diffs[i]);
 
 
@@ -535,7 +530,7 @@ void LSDWrapper::HandleFrame()
 			snprintf(charBuf+33,800, "z: %.3f                          ",LSDResultTransformed[2]);
 			snprintf(charBuf+43,800, "r: %.2f                          ",LSDResultTransformed[3]);
 			snprintf(charBuf+53,800, "p: %.2f                          ",LSDResultTransformed[4]);
-			snprintf(charBuf+63,800, "y: %.2f",PTAMResultTransformed[5]);
+			snprintf(charBuf+63,800, "y: %.2f",LSDResultTransformed[5]);
 			msg += charBuf;
 
 		}
@@ -588,16 +583,16 @@ void LSDWrapper::HandleFrame()
 	lastLSDResultRaw = LSDResultSE3; 
 	// ------------------------ LOG --------------------------------------
 	// log!
-	if(node->logfilePTAM != NULL)
+	if(node->logfileLSD != NULL)
 	{
 		TooN::Vector<3> scales = filter->getCurrentScalesForLog();
 		TooN::Vector<3> sums = TooN::makeVector(0,0,0);
 		TooN::Vector<6> offsets = filter->getCurrentOffsets();
-		pthread_mutex_lock(&(node->logPTAM_CS));
+		pthread_mutex_lock(&(node->logLSD_CS));
 		
 		lsdTracker->logCameraPose(camToWorld, time);
 
-		pthread_mutex_unlock(&(node->logPTAM_CS));
+		pthread_mutex_unlock(&(node->logLSD_CS));
 	}
 
 	myGLWindow->swap_buffers();
@@ -771,12 +766,12 @@ void LSDWrapper::newNavdata(ardrone_autonomy::Navdata* nav)
 
 	if(getMS(lastNavinfoReceived.header.stamp) > 2000000)
 	{
-		printf("PTAMSystem: ignoring navdata package with timestamp %f\n", lastNavinfoReceived.tm);
+		printf("LSDSystem: ignoring navdata package with timestamp %f\n", lastNavinfoReceived.tm);
 		return;
 	}
 	if(lastNavinfoReceived.header.seq > 2000000 || lastNavinfoReceived.header.seq < 0)
 	{
-		printf("PTAMSystem: ignoring navdata package with ID %i\n", lastNavinfoReceived.header.seq);
+		printf("LSDSystem: ignoring navdata package with ID %i\n", lastNavinfoReceived.header.seq);
 		return;
 	}
 
@@ -897,6 +892,7 @@ void LSDWrapper::on_key_down(int key)
 // Handle commands should be completely changed for LSD but of a low priority
 
 // reached by typing "df p COMMAND" into console
+/*
 bool LSDWrapper::handleCommand(std::string s)
 {
 	if(s.length() == 5 && s.substr(0,5) == "space")
@@ -966,7 +962,7 @@ bool LSDWrapper::handleCommand(std::string s)
 
 	return true;
 }
-
+*/
 void LSDWrapper::on_mouse_down(CVD::ImageRef where, int state, int button)
 {
 	double x = 4*(where.x/(double)this->myGLWindow->size().x - 0.5);
