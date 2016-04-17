@@ -44,9 +44,9 @@
 using namespace std;
 
 pthread_mutex_t EstimationNode::logIMU_CS = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t EstimationNode::logPTAM_CS = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t EstimationNode::logLSD_CS = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t EstimationNode::logFilter_CS = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t EstimationNode::logPTAMRaw_CS = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t EstimationNode::logLSDRaw_CS = PTHREAD_MUTEX_INITIALIZER;
 
 EstimationNode::EstimationNode()
 {
@@ -91,7 +91,7 @@ EstimationNode::EstimationNode()
 	//tf_broadcaster();
 
 	// other internal vars
-	logfileIMU = logfilePTAM = logfileFilter = logfilePTAMRaw = 0;
+	logfileIMU = logfileLSD = logfileFilter = logfileLSDRaw = 0;
 	currentLogID = 0;
 	lastDroneTS = 0;
 	lastRosTS = 0;
@@ -273,7 +273,7 @@ void EstimationNode::Loop()
 		  s.header.stamp = ros::Time().now();
 		  s.scale = filter->getCurrentScales()[0];
 		  s.scaleAccuracy = filter->getScaleAccuracy();
-		  s.ptamState = lsdWrapper->PTAMStatus;
+		  s.lsdState = lsdWrapper->LSDStatus;
 		  s.droneState = lastNavdataReceived.state;
 		  s.batteryPercent = lastNavdataReceived.batteryPercent;
 
@@ -285,7 +285,7 @@ void EstimationNode::Loop()
 		  // if PTAM updates hang (no video or e.g. init), filter is never permanently rolled forward -> queues get too big.
 		  // dont allow this to happen by faking a ptam observation if queue gets too big (500ms = 100 observations)
 		  if((getMS(ros::Time().now()) - filter->predictdUpToTimestamp) > 500)
-			  filter->addFakePTAMObservation(getMS(ros::Time().now()) - 300);
+			  filter->addFakeLSDObservation(getMS(ros::Time().now()) - 300);
 
 
 		  // ---------- maybe send new info --------------------------
@@ -370,19 +370,19 @@ void EstimationNode::publishTf(TooN::SE3<> trans, ros::Time stamp, int seq, std:
 
 
 
-	if(logfilePTAMRaw != NULL)
+	if(logfileLSDRaw != NULL)
 	{
-		pthread_mutex_lock(&(logPTAMRaw_CS));
+		pthread_mutex_lock(&(logLSDRaw_CS));
 		// log:
 		// - filterPosePrePTAM estimated for videoFrameTimestamp-delayVideo.
 		// - PTAMResulttransformed estimated for videoFrameTimestamp-delayVideo. (using imu only for last step)
 		// - predictedPoseSpeed estimated for lastNfoTimestamp+filter->delayControl	(actually predicting)
 		// - predictedPoseSpeedATLASTNFO estimated for lastNfoTimestamp	(using imu only)
-		if(logfilePTAMRaw != NULL)
-			(*(logfilePTAMRaw)) << seq << " " << stamp << " " << tr.getOrigin().x() << " " << tr.getOrigin().y() << " " << tr.getOrigin().z() << " " <<
+		if(logfileLSDRaw != NULL)
+			(*(logfileLSDRaw)) << seq << " " << stamp << " " << tr.getOrigin().x() << " " << tr.getOrigin().y() << " " << tr.getOrigin().z() << " " <<
 			tr.getRotation().x() << " " << tr.getRotation().y() << " " << tr.getRotation().z() << " " << tr.getRotation().w() << std::endl;
 
-		pthread_mutex_unlock(&(logPTAMRaw_CS));
+		pthread_mutex_unlock(&(logLSDRaw_CS));
 	}
 
 }
@@ -432,21 +432,21 @@ void EstimationNode::toogleLogging()
 
 
 	// IMU
-	pthread_mutex_lock(&logPTAM_CS);
-	if(logfilePTAM == 0)
+	pthread_mutex_lock(&logLSD_CS);
+	if(logfileLSD == 0)
 	{
-		logfilePTAM = new std::ofstream();
-		sprintf(buf,"%s/logs/%ld/logPTAM.txt",packagePath.c_str(),currentLogID);
-		logfilePTAM->open (buf);
+		logfileLSD = new std::ofstream();
+		sprintf(buf,"%s/logs/%ld/logLSD.txt",packagePath.c_str(),currentLogID);
+		logfileLSD->open (buf);
 	}
 	else
 	{
-		logfilePTAM->flush();
-		logfilePTAM->close();
-		delete logfilePTAM;
-		logfilePTAM = NULL;
+		logfileLSD->flush();
+		logfileLSD->close();
+		delete logfileLSD;
+		logfileLSD = NULL;
 	}
-	pthread_mutex_unlock(&logPTAM_CS);
+	pthread_mutex_unlock(&logLSD_CS);
 
 
 
@@ -507,20 +507,13 @@ void EstimationNode::reSendInfo()
 	case lsdWrapper::PTAM_IDLE:
 		ptamStatus = "Idle";
 		break;
-	case lsdWrapper::PTAM_INITIALIZING:
-		ptamStatus = "Initializing";
-		break;
 	case lsdWrapper::PTAM_LOST:
 		ptamStatus = "Lost";
-		break;
-	case lsdWrapper::PTAM_FALSEPOSITIVE:
-		ptamStatus = "FalsePositive";
 		break;
 	case lsdWrapper::PTAM_GOOD:
 		ptamStatus = "Good";
 		break;
 	case lsdWrapper::PTAM_TOOKKF:
-	case lsdWrapper::PTAM_BEST:
 		ptamStatus = "Best";
 		break;
 	}
