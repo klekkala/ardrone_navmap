@@ -174,6 +174,7 @@ public:
 	void startSystem();
 	void stopSystem();
 
+	enum {PTAM_IDLE = 0, PTAM_LOST = 1, PTAM_GOOD = 2, PTAM_TOOKKF = 3} PTAMStatus;
 
 	TooN::SE3<> lastLSDResultRaw;
 	std::string lastLSDMessage;

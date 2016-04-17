@@ -135,7 +135,7 @@ void MapView::Render()
 
 				trailPoints.push_back(TrailPoint(
 					lastFramePoseSpeed.slice<0,3>(),
-					ptamPointPos
+					lsdPointPos
 				));
 			}
 		}
