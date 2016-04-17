@@ -38,26 +38,26 @@ class EstimationNode;
 class ScaleStruct
 {
 public:
-	TooN::Vector<3> ptam;
+	TooN::Vector<3> lsd;
 	TooN::Vector<3> imu;
-	double ptamNorm;
+	double lsdNorm;
 	double imuNorm;
 	double alphaSingleEstimate;
 	double pp, ii, pi;
 
-	inline double computeEstimator(double spp, double sii, double spi, double stdDevPTAM = 0.2, double stdDevIMU = 0.1)
+	inline double computeEstimator(double spp, double sii, double spi, double stdDevLSD = 0.2, double stdDevIMU = 0.1)
 	{
-		double sII = stdDevPTAM * stdDevPTAM * sii;
+		double sII = stdDevLSD * stdDevLSD * sii;
 		double sPP = stdDevIMU * stdDevIMU * spp;
-		double sPI = stdDevIMU * stdDevPTAM * spi;
+		double sPI = stdDevIMU * stdDevLSD * spi;
 
 		double tmp = (sII-sPP)*(sII-sPP) + 4*sPI*sPI;
 		if(tmp <= 0) tmp = 1e-5;	// numeric issues
-		return 0.5*((sII-sPP)+sqrt(tmp)) / (stdDevPTAM * stdDevPTAM * spi);
+		return 0.5*((sII-sPP)+sqrt(tmp)) / (stdDevLSD * stdDevLSD * spi);
 
 	}
 
-	inline ScaleStruct(TooN::Vector<3> ptamDist, TooN::Vector<3> imuDist)
+	inline ScaleStruct(TooN::Vector<3> lsdDist, TooN::Vector<3> imuDist)
 	{
 		ptam = ptamDist;
 		imu = imuDist;
