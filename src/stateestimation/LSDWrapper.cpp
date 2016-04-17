@@ -261,7 +261,7 @@ void LSDWrapper::HandleFrame()
 	// Track image and get current pose estimate
 	/***Note: image is of type imagedata from lsd-slam change it***/
 	TooN::SE3<> LSDResultSE3;
-	LSDResultSE3 = lsdTracker.newImageCallback(mimFrameBW_workingCopy.data, mimFrameBW_workingCopy.time);
+	LSDResultSE3 = lsdTracker.newImageCallback(mimFrameBW_workingCopy.data, mimFrameBW_workingCopy.timestamp);
 
 	ros::Duration timeLSD= ros::Time::now() - startedLSD;
 
@@ -817,7 +817,8 @@ void LSDWrapper::newImage(sensor_msgs::ImageConstPtr img)
 
 	//mimFrameTime = getMS(img->header.stamp);
 	mimFrameSEQ = img->header.seq;
-	mimFrameBW = cv->image;
+	mimFrameBW.data = cv->image;
+	mimFrameBW.timestamp = Timestamp(img->header.stamp.toSec());
 
 	newImageAvailable = true;
 
