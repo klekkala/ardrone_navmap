@@ -122,18 +122,16 @@ void MapView::Render()
 	// the following complicated code is to save trail-points in ptam-scale, such that scale-reestimation will re-scale the drawn path.
 	if(addTrail)
 	{
-		if(lsdWrapper->PTAMStatus == lsdWrapper->PTAM_BEST ||
-				lsdWrapper->PTAMStatus == lsdWrapper->PTAM_TOOKKF ||
-				lsdWrapper->PTAMStatus == lsdWrapper->PTAM_GOOD)
+		if(lsdWrapper->LSDStatus == lsdWrapper->LSD_GOOD)
 		{
-			if(lsdWrapper->PTAMInitializedClock != 0 && getMS() - lsdWrapper->PTAMInitializedClock > 200)
+			if(lsdWrapper->LSDInitializedClock != 0 && getMS() - lsdWrapper->LSDInitializedClock > 200)
 			{
-				TooN::Vector<3> PTAMScales = filter->getCurrentScales();
-				TooN::Vector<3> PTAMOffsets = filter->getCurrentOffsets().slice<0,3>();
+				TooN::Vector<3> LSDScales = filter->getCurrentScales();
+				TooN::Vector<3> LSDOffsets = filter->getCurrentOffsets().slice<0,3>();
 
-				TooN::Vector<3> ptamPointPos = lastFramePoseSpeed.slice<0,3>();
-				ptamPointPos -= PTAMOffsets;
-				ptamPointPos /= PTAMScales[0];
+				TooN::Vector<3> lsdPointPos = lastFramePoseSpeed.slice<0,3>();
+				lsdPointPos -= LSDOffsets;
+				lsdPointPos /= LSDScales[0];
 
 				trailPoints.push_back(TrailPoint(
 					lastFramePoseSpeed.slice<0,3>(),
@@ -141,21 +139,20 @@ void MapView::Render()
 				));
 			}
 		}
-		else if(lsdWrapper->PTAMStatus == lsdWrapper->PTAM_LOST ||
-				lsdWrapper->PTAMStatus == lsdWrapper->PTAM_FALSEPOSITIVE)
+		else if(lsdWrapper->LSDStatus == lsdWrapper->LSD_LOST)
 		{
-			if(lsdWrapper->PTAMInitializedClock != 0 && getMS() - lsdWrapper->PTAMInitializedClock > 200)
+			if(lsdWrapper->LSDInitializedClock != 0 && getMS() - lsdWrapper->LSDInitializedClock > 200)
 			{
-				TooN::Vector<3> PTAMScales = filter->getCurrentScales();
-				TooN::Vector<3> PTAMOffsets = filter->getCurrentOffsets().slice<0,3>();
+				TooN::Vector<3> LSDScales = filter->getCurrentScales();
+				TooN::Vector<3> LSDOffsets = filter->getCurrentOffsets().slice<0,3>();
 
-				TooN::Vector<3> ptamPointPos = lastFramePoseSpeed.slice<0,3>();
-				ptamPointPos -= PTAMOffsets;
-				ptamPointPos /= PTAMScales[0];
+				TooN::Vector<3> lsdPointPos = lastFramePoseSpeed.slice<0,3>();
+				lsdPointPos -= LSDOffsets;
+				lsdPointPos /= LSDScales[0];
 
 				trailPoints.push_back(TrailPoint(
 					lastFramePoseSpeed.slice<0,3>(),
-					ptamPointPos
+					lsdPointPos
 				));
 			}
 		}
@@ -309,18 +306,18 @@ void MapView::drawTrail()
 	glBegin(GL_LINES);
 	glColor4f(0,1,0,0.6);
 
-	TooN::Vector<3> PTAMScales = filter->getCurrentScales();
-	TooN::Vector<3> PTAMOffsets = filter->getCurrentOffsets().slice<0,3>();
+	TooN::Vector<3> LSDScales = filter->getCurrentScales();
+	TooN::Vector<3> LSDOffsets = filter->getCurrentOffsets().slice<0,3>();
 
 	for(unsigned int i=1;i<trailPoints.size();i++)
 	{
-		if(trailPoints[i].PTAMValid)
+		if(trailPoints[i].LSDValid)
 		{
-			trailPoints[i].pointFilter = trailPoints[i].pointPTAM;
-			trailPoints[i].pointFilter[0] *= PTAMScales[0];
-			trailPoints[i].pointFilter[1] *= PTAMScales[1];
-			trailPoints[i].pointFilter[2] *= PTAMScales[2];
-			trailPoints[i].pointFilter += PTAMOffsets;
+			trailPoints[i].pointFilter = trailPoints[i].pointLSD;
+			trailPoints[i].pointFilter[0] *= LSDScales[0];
+			trailPoints[i].pointFilter[1] *= LSDScales[1];
+			trailPoints[i].pointFilter[2] *= LSDScales[2];
+			trailPoints[i].pointFilter += LSDOffsets;
 		}
 		if(i > 1 && i < trailPoints.size()-1)
 			glVertex3f((float)trailPoints[i].pointFilter[0], (float)trailPoints[i].pointFilter[1], (float)trailPoints[i].pointFilter[2]);
@@ -354,6 +351,8 @@ void MapView::plotMapPoints()
 	glBegin(GL_LINES);
 	glColor3f(1,0,0);
 
+
+	//Check with this later because LSD has a graph optimization technique which makes the generated map flush and plot each time
 	std::vector<tvec3>* mpl = &(lsdWrapper->mapPointsTransformed);
 	
 	for(unsigned int i=0;i<mpl->size();i++)
