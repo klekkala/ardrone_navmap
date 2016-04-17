@@ -35,7 +35,6 @@
 
 class LiveSLAMWrapper;
 class SlamSystem;
-class ATANCamera;
 class Predictor;
 class DroneKalmanFilter;
 class DroneFlightModule;
@@ -101,7 +100,7 @@ private:
 	Predictor* imuOnlyPred;	
 	int lastScaleEKFtimestamp;
 	
-	bool resetPTAMRequested;
+	bool resetLSDRequested;
 	enum {UI_NONE = 0, UI_DEBUG = 1, UI_PRES = 2} drawUI;
 
 
@@ -116,8 +115,8 @@ private:
 	int lastGoodYawClock;
 	int isGoodCount;	// number of succ. tracked frames in a row.
 
-	TooN::Vector<3> PTAMPositionForScale;
-	int ptamPositionForScaleTakenTimestamp;
+	TooN::Vector<3> LSDPositionForScale;
+	int lsdPositionForScaleTakenTimestamp;
 	int framesIncludedForScaleXYZ;
 	std::deque<ardrone_autonomy::Navdata> navInfoQueue;
 	bool navQueueOverflown;
@@ -153,7 +152,6 @@ public:
 	void newImage(sensor_msgs::ImageConstPtr img);
 	void newNavdata(ardrone_autonomy::Navdata* nav);
 	bool newImageAvailable;
-	void setPTAMPars(double minKFTimeDist, double minKFWiggleDist, double minKFDist);
 
 	bool handleCommand(std::string s);
 	bool mapLocked;
@@ -169,7 +167,7 @@ public:
 	//virtual void on_event(int event);
 	
 	// resets PTAM tracking
-	inline void Reset() {resetPTAMRequested = true;};
+	inline void Reset() {resetLSDRequested = true;};
 
 
 	// start and stop system and respective thread.
@@ -177,10 +175,8 @@ public:
 	void stopSystem();
 
 
-
-	enum {PTAM_IDLE = 0, PTAM_INITIALIZING = 1, PTAM_LOST = 2, PTAM_GOOD = 3, PTAM_BEST = 4, PTAM_TOOKKF = 5, PTAM_FALSEPOSITIVE = 6} PTAMStatus;
-	TooN::SE3<> lastPTAMResultRaw;
-	std::string lastPTAMMessage;
+	TooN::SE3<> lastLSDResultRaw;
+	std::string lastLSDMessage;
 
 	// for map rendering: shallow clone
 	std::vector<tvec3> mapPointsTransformed;
@@ -188,8 +184,8 @@ public:
 
 	ardrone_autonomy::Navdata lastNavinfoReceived;
 
-	int PTAMInitializedClock;
+	int LSDInitializedClock;
 
 };
 
-#endif /* __PTAMWRAPPER_H */
+#endif /* __LSDWRAPPER_H */
