@@ -24,6 +24,7 @@
 #include "GLWindow2.h"
 #include "TooN/se3.h"
 #include <deque>
+#include <chrono>
 #include "sensor_msgs/Image.h"
 #include "ardrone_autonomy/Navdata.h"
 #include "cvd/thread.h"
@@ -31,8 +32,18 @@
 #include "cvd/byte.h"
 #include "MouseKeyHandler.h"
 #include "boost/thread.hpp"
+#include "LSD-SLAM/lsd_slam/io_wrapper/timestamp.h"
+#include "LSD-SLAM/lsd_slam/io_wrapper/notify_buffer.h"
+#include "LSD-SLAM/lsd_slam/io_wrapper/timestamped_object.h"
+#include "util/sophus_util.h"
 
 
+namespace cv {
+	class Mat;
+}
+
+namespace lsd_slam
+{
 class LiveSLAMWrapper;
 class SlamSystem;
 class Predictor;
@@ -211,3 +222,4 @@ public:
 };
 
 #endif /* __LSDWRAPPER_H */
+}

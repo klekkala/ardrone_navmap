@@ -35,17 +35,17 @@
 #include <string>
 #include <boost/thread.hpp>
 #include <boost/foreach.hpp>
-#include "LSD-SLAM/slam_system.h"
-#include "LSD-SLAM/IOWrapper/ROS/ROSImageStreamThread.h"
-#include "LSD-SLAM/IOWrapper/ROS/ROSOutput3DWrapper.h"
-#include "LSD-SLAM/IOWrapper/ROS/rosReconfigure.h"
+#include "LSD-SLAM/lsd_slam/slam_system.h"
+#include "LSD-SLAM/lsd_slam/io_wrapper/ROS/ROSOutput3DWrapper.h"
+#include "LSD-SLAM/lsd_slam/io_wrapper/ROS/rosReconfigure.h"
 
 pthread_mutex_t LSDWrapper::navInfoQueueCS = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t LSDWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_mutex_t LSDWrapper::logScalePairs_CS = PTHREAD_MUTEX_INITIALIZER;
 
-LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde, InputImageStream* imageStream, Output3DWrapper* outputWrapper)
+namespace lsd_slam{
+LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde, Output3DWrapper* outputWrapper)
 {
 	filter = f;
 	node = nde;
@@ -54,9 +54,6 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde, InputImageStre
 	predIMUOnlyForScale = 0;
 	mpCamera = 0;
 	newImageAvailable = false;
-
-	this->imageStream = imageStream;
-	this->outputWrapper = outputWrapper;
 	
 	mapPointsTransformed = std::vector<tvec3>();
 	keyFramesTransformed = std::vector<tse3>();
@@ -71,27 +68,27 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde, InputImageStre
 
 	logfileScalePairs = 0;
 
-
-
-	this->imageStream = imageStream;
 	this->outputWrapper = outputWrapper;
-	imageStream->getBuffer()->setReceiver(this);
-
 
 	outFileName = packagePath+"estimated_poses.txt";
 
-
 	isInitialized = false;
 
-
+/***********************************************************relok this*/
+	std::ifstream fleH (file.c_str());
 	Sophus::Matrix3f K_sophus;
-	K_sophus << fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0;
+	TooN::Vector<5> camPar;
+	fleH >> camPar[0] >> camPar[1] >> camPar[2] >> camPar[3] >> camPar[4];
+	fleH.close();
+	std::cout<< "Set Camera Paramerer to: " << camPar[0] << " " << camPar[1] << " " << camPar[2] << " " << camPar[3] << " " << camPar[4] << std::endl;
+	
+	K_sophus << camPar[0], 0.0, camPar[1], 0.0, camPar[2], camPar[3], 0.0, 0.0, 1.0;
 
 	outFile = nullptr;
 
 
 	// make Odometry
-	monoOdometry = new SlamSystem(width, height, K_sophus, doSlam);
+	monoOdometry = new SlamSystem(frameWidth, frameHeight, K_sophus, doSlam);
 
 	monoOdometry->setVisualization(outputWrapper);
 
@@ -165,13 +162,13 @@ void LSDWrapper::ResetInternal()
 
 LSDWrapper::~LSDWrapper(void)
 {
-	if(lsdTracker != 0) delete lsdTracker;
 	if(predConvert != 0) delete predConvert;
 	if(predIMUOnlyForScale != 0) delete predIMUOnlyForScale;
 	if(imuOnlyPred != 0) delete imuOnlyPred;
 
 	if(monoOdometry != 0)
 		delete monoOdometry;
+
 	if(outFile != 0)
 	{
 		outFile->flush();
@@ -312,8 +309,10 @@ void LSDWrapper::HandleFrame()
 	// Track image and get current pose estimate
 	/***Note: image is of type imagedata from lsd-slam change it***/
 	TooN::SE3<> LSDResultSE3;
-	LSDResultSE3 = lsdTracker.newImageCallback(mimFrameBW_workingCopy.data, mimFrameBW_workingCopy.timestamp);
+	newImageCallback(mimFrameBW_workingCopy.data, mimFrameBW_workingCopy.timestamp);
 
+
+////////////Get current pose estimate////////
 	ros::Duration timeLSD= ros::Time::now() - startedLSD;
 
 	TooN::Vector<6> LSDResultSE3TwistOrg = LSDResultSE3.ln();
@@ -647,7 +646,8 @@ void LSDWrapper::HandleFrame()
 		TooN::Vector<6> offsets = filter->getCurrentOffsets();
 		pthread_mutex_lock(&(node->logLSD_CS));
 		
-		lsdTracker->logCameraPose(camToWorld, time);
+		//****Look at this.... time may not be proper**/
+		logCameraPose(camToWorld, time);
 
 		pthread_mutex_unlock(&(node->logLSD_CS));
 	}
@@ -689,13 +689,11 @@ void LSDWrapper::newImageCallback(const cv::Mat& img, Timestamp imgTime)
 	{
 		monoOdometry->trackFrame(grayImg.data,imageSeqNumber,false,imgTime.toSec());
 	}
-	LSDResultSE3 = monoOdoemtry->getCurrentPoseEstimate();
 
-	return LSDResultSE3;
 }
 
 
-void LSD`Wrapper::logCameraPose(const SE3& camToWorld, double time)
+void LSDWrapper::logCameraPose(const SE3& camToWorld, double time)
 {
 	Sophus::Quaternionf quat = camToWorld.unit_quaternion().cast<float>();
 	Eigen::Vector3f trans = camToWorld.translation().cast<float>();
@@ -1100,4 +1098,5 @@ void LSDWrapper::on_mouse_down(CVD::ImageRef where, int state, int button)
 		snprintf(bf,100,"c moveByRel 0 0 %.3f %.3f",y,x*45);
 
 	node->publishCommand(bf);
+}
 }
