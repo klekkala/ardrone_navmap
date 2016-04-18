@@ -121,13 +121,13 @@ public:
 	// logging stuff
 	// logging stuff
 	std::ofstream* logfileIMU;
-	std::ofstream* logfilePTAM;
+	std::ofstream* logfileLSD;
 	std::ofstream* logfileFilter;
-	std::ofstream* logfilePTAMRaw;
+	std::ofstream* logfileLSDRaw;
 	static pthread_mutex_t logIMU_CS;
-	static pthread_mutex_t logPTAM_CS;
+	static pthread_mutex_t logLSD_CS;
 	static pthread_mutex_t logFilter_CS;
-	static pthread_mutex_t logPTAMRaw_CS;
+	static pthread_mutex_t logLSDRaw_CS;
 	long currentLogID;
 	long startedLogClock;
 
