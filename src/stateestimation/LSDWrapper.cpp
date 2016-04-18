@@ -311,8 +311,8 @@ void LSDWrapper::HandleFrame()
 	TooN::SE3<> LSDResultSE3;
 	newImageCallback(mimFrameBW_workingCopy.data, mimFrameBW_workingCopy.timestamp);
 
-
-////////////Get current pose estimate////////
+	LSDResultSE3 = monoOdometry->getCurrentPoseEstimate();
+	
 	ros::Duration timeLSD= ros::Time::now() - startedLSD;
 
 	TooN::Vector<6> LSDResultSE3TwistOrg = LSDResultSE3.ln();
@@ -1011,7 +1011,7 @@ void LSDWrapper::on_key_down(int key)
 // Handle commands should be completely changed for LSD but of a low priority
 
 // reached by typing "df p COMMAND" into console
-/*
+
 bool LSDWrapper::handleCommand(std::string s)
 {
 	if(s.length() == 5 && s.substr(0,5) == "space")
@@ -1081,7 +1081,7 @@ bool LSDWrapper::handleCommand(std::string s)
 
 	return true;
 }
-*/
+
 void LSDWrapper::on_mouse_down(CVD::ImageRef where, int state, int button)
 {
 	double x = 4*(where.x/(double)this->myGLWindow->size().x - 0.5);

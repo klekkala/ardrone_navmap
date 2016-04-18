@@ -304,9 +304,6 @@ void EstimationNode::dynConfCb(tum_ardrone::StateestimationParamsConfig &config,
 	if(!filter->allSyncLocked && config.PTAMSyncLock)
 		ROS_WARN("Ptam Sync has been disabled. This fixes scale etc.");
 
-	if(!lsdWrapper->mapLocked && config.PTAMMapLock)
-		ROS_WARN("Ptam Map has been locked.");
-
 
 	filter->useControl =config.UseControlGains;
 	filter->usePTAM =config.UsePTAM;

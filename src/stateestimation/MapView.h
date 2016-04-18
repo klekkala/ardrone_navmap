@@ -42,17 +42,17 @@ public:
 	inline TrailPoint(TooN::Vector<3> filter)
 	{
 		pointFilter = filter;
-		PTAMValid = false;
+		LSDValid = false;
 	}
-	inline TrailPoint(TooN::Vector<3> filter, TooN::Vector<3> ptam)
+	inline TrailPoint(TooN::Vector<3> filter, TooN::Vector<3> lsd)
 	{
 		pointFilter = filter;
-		pointPTAM = ptam;
-		PTAMValid = true;
+		pointLSD = lsd;
+		LSDValid = true;
 	}
-	TooN::Vector<3> pointPTAM;
+	TooN::Vector<3> pointLSD;
 	TooN::Vector<3> pointFilter;
-	bool PTAMValid;
+	bool LSDValid;
 };
 
 class MapView : private CVD::Thread, private MouseKeyHandler
