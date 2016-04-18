@@ -301,19 +301,19 @@ void EstimationNode::Loop()
 }
 void EstimationNode::dynConfCb(tum_ardrone::StateestimationParamsConfig &config, uint32_t level)
 {
-	if(!filter->allSyncLocked && config.PTAMSyncLock)
-		ROS_WARN("Ptam Sync has been disabled. This fixes scale etc.");
+	if(!filter->allSyncLocked && config.LSDSyncLock)
+		ROS_WARN("Lsd Sync has been disabled. This fixes scale etc.");
 
 
 	filter->useControl =config.UseControlGains;
-	filter->usePTAM =config.UsePTAM;
+	filter->useLSD =config.UseLSD;
 	filter->useNavdata =config.UseNavdata;
 
 	filter->useScalingFixpoint = config.RescaleFixOrigin;
 
-	filter->allSyncLocked = config.PTAMSyncLock;
+	filter->allSyncLocked = config.LSDSyncLock;
 
-
+	//Dynamic configuration params*****************
 	lsdWrapper->setPTAMPars(config.PTAMMinKFTimeDiff, config.PTAMMinKFWiggleDist, config.PTAMMinKFDist);
 
 
@@ -464,21 +464,21 @@ void EstimationNode::toogleLogging()
 
 
 	// IMU
-	pthread_mutex_lock(&logPTAMRaw_CS);
-	if(logfilePTAMRaw == 0)
+	pthread_mutex_lock(&logLSDRaw_CS);
+	if(logfileLSDRaw == 0)
 	{
-		logfilePTAMRaw = new std::ofstream();
-		sprintf(buf,"%s/logs/%ld/logPTAMRaw.txt",packagePath.c_str(),currentLogID);
-		logfilePTAMRaw->open (buf);
+		logfileLSDRaw = new std::ofstream();
+		sprintf(buf,"%s/logs/%ld/logLSDRaw.txt",packagePath.c_str(),currentLogID);
+		logfileLSDRaw->open (buf);
 	}
 	else
 	{
-		logfilePTAMRaw->flush();
-		logfilePTAMRaw->close();
-		delete logfilePTAMRaw;
-		logfilePTAMRaw = NULL;
+		logfileLSDRaw->flush();
+		logfileLSDRaw->close();
+		delete logfileLSDRaw;
+		logfileLSDRaw = NULL;
 	}
-	pthread_mutex_unlock(&logPTAMRaw_CS);
+	pthread_mutex_unlock(&logLSDRaw_CS);
 
 
 	if(quitLogging)
@@ -516,12 +516,12 @@ void EstimationNode::reSendInfo()
 
 
 	// parse PTAM message
-	std::string ptamMsg = lsdWrapper->lastPTAMMessage;
+	std::string lsdMsg = lsdWrapper->lastLSDMessage;
 	int kf, kp, kps[4], kpf[4];
-	int pos = ptamMsg.find("Found: ");
+	int pos = lsdMsg.find("Found: ");
 	int found = 0;
 	if(pos != std::string::npos)
-		found = sscanf(ptamMsg.substr(pos).c_str(),"Found: %d/%d %d/%d %d/%d %d/%d Map: %dP, %dKF",
+		found = sscanf(lsdMsg.substr(pos).c_str(),"Found: %d/%d %d/%d %d/%d %d/%d Map: %dP, %dKF",
 						&kpf[0],&kps[0],&kpf[1],&kps[1],&kpf[2],&kps[2],&kpf[3],&kps[3],&kp,&kf);
 	char bufp[200];
 	if(found == 10)
@@ -554,8 +554,8 @@ void EstimationNode::reSendInfo()
 	Status: X (Battery: X)
 	*/
 	char buf[1000];
-	snprintf(buf,1000,"u s PTAM: %s\n%s\nScale: %.3f (%d in, %d out), acc: %.2f\nScaleFixpoint: %s\nDrone Status: %s (%d Battery)",
-			ptamStatus.c_str(),
+	snprintf(buf,1000,"u s LSD: %s\n%s\nScale: %.3f (%d in, %d out), acc: %.2f\nScaleFixpoint: %s\nDrone Status: %s (%d Battery)",
+			lsdStatus.c_str(),
 			bufp,
 			filter->getCurrentScales()[0],filter->scalePairsIn,filter->scalePairsOut,filter->getScaleAccuracy(),
 			filter->useScalingFixpoint ? "FIX" : "DRONE",
