@@ -41,7 +41,6 @@ class DroneFlightModule;
 class EstimationNode;
 class KeyFrameGraph;
 class LiveSLAMWrapperROS;
-class InputImageStream;
 class Output3DWrapper;
 
 typedef TooN::Vector<3> tvec3;
@@ -57,6 +56,8 @@ class LSDWrapper : private CVD::Thread, private MouseKeyHandler
 private:
 	// base window
 	GLWindow2* myGLWindow;
+
+	//Change this to Utils equivalent
 	CVD::ImageRef desiredWindowSize;		// size the window scould get changed to if [changeSizeNextRender]
 	CVD::ImageRef defaultWindowSize;		// size the window gets opened with
 	bool changeSizeNextRender;
@@ -71,6 +72,7 @@ private:
 	// references to filter.
 	DroneKalmanFilter* filter;
 	EstimationNode* node;
+	Output3DWrapper* outputWrapper;
 
 	// -------------------- LSD Related stuff --------------------------------
 	char charBuf[1000];
@@ -89,25 +91,29 @@ private:
 
 	// Map is in my global Coordinate system. keyframes give the front-cam-position, i.e.
 	// CFromW is "GlobalToFront". this is achieved by aligning the global coordinate systems in the very beginning.
-	InputImageStream* inputStream;
-	Output3DWrapper* outputWrapper;
+	
 	LiveSLAMWrapper* lsdTracker;
 	Predictor* predConvert;			// used ONLY to convert from rpy to se3 and back, i.e. never kept in some state.
 	Predictor* predIMUOnlyForScale;	// used for scale calculation. needs to be updated with every new navinfo...
 
-	double minKFTimeDist;
-	double minKFWiggleDist;
-	double minKFDist;
+	bool isInitialized;
 
+	SlamSystem* monoOdometry;
+
+	std::string outFileName;
+	std::ofstream* outFile;
+	
+	float fx, fy, cx, cy;
+	int width, height;
+
+
+	int imageSeqNumber;
 
 	Predictor* imuOnlyPred;	
 	int lastScaleEKFtimestamp;
 	
 	bool resetLSDRequested;
 	enum {UI_NONE = 0, UI_DEBUG = 1, UI_PRES = 2} drawUI;
-
-
-	bool forceKF;
 
 	bool flushMapKeypoints;
 
@@ -126,10 +132,8 @@ private:
 	TooN::Vector<3> evalNavQue(unsigned int from, unsigned int to, bool* zCorrupted, bool* allCorrupted, float* out_start_pressure, float* out_end_pressure);
 	
 
-	// keep Running
+	// keep Running; locknext frame removed
 	bool keepRunning;
-	
-	bool lockNextFrame;
 
 	boost::condition_variable  new_frame_signal;
 	boost::mutex new_frame_signal_mutex;
@@ -172,6 +176,20 @@ public:
 	// resets PTAM tracking
 	inline void Reset() {resetLSDRequested = true;};
 
+	/** Runs the main processing loop. Will never return. */
+	void Loop();
+
+	/** Requests a reset from a different thread. */
+	void requestReset();
+
+	/** Callback function for new RGB images. */
+	void newImageCallback(const cv::Mat& img, Timestamp imgTime);
+
+	/** Writes the given time and pose to the outFile. */
+	void logCameraPose(const SE3& camToWorld, double time);
+	
+	
+	inline SlamSystem* getSlamSystem() {return monoOdometry;}
 
 	// start and stop system and respective thread.
 	void startSystem();
