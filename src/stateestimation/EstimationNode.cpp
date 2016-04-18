@@ -311,8 +311,6 @@ void EstimationNode::dynConfCb(tum_ardrone::StateestimationParamsConfig &config,
 
 	filter->useScalingFixpoint = config.RescaleFixOrigin;
 
-	lsdWrapper->maxKF = config.PTAMMaxKF;
-	lsdWrapper->mapLocked = config.PTAMMapLock;
 	filter->allSyncLocked = config.PTAMSyncLock;
 
 
