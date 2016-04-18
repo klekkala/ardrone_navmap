@@ -40,6 +40,9 @@ class DroneKalmanFilter;
 class DroneFlightModule;
 class EstimationNode;
 class KeyFrameGraph;
+class LiveSLAMWrapperROS;
+class InputImageStream;
+class Output3DWrapper;
 
 typedef TooN::Vector<3> tvec3;
 typedef TooN::SE3<> tse3;

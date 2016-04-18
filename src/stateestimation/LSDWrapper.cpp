@@ -35,7 +35,6 @@
 #include <string>
 #include <boost/thread.hpp>
 #include <boost/foreach.hpp>
-#include "LSD-SLAM/live_slam_wrapper.h"
 #include "LSD-SLAM/slam_system.h"
 #include "LSD-SLAM/IOWrapper/ROS/ROSImageStreamThread.h"
 #include "LSD-SLAM/IOWrapper/ROS/ROSOutput3DWrapper.h"
@@ -46,7 +45,7 @@ pthread_mutex_t LSDWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_mutex_t LSDWrapper::logScalePairs_CS = PTHREAD_MUTEX_INITIALIZER;
 
-LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde)
+LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde, InputImageStream* imageStream, Output3DWrapper* outputWrapper)
 {
 	filter = f;
 	node = nde;
@@ -55,6 +54,9 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 	predIMUOnlyForScale = 0;
 	mpCamera = 0;
 	newImageAvailable = false;
+
+	this->imageStream = imageStream;
+	this->outputWrapper = outputWrapper;
 	
 	mapPointsTransformed = std::vector<tvec3>();
 	keyFramesTransformed = std::vector<tse3>();
@@ -68,6 +70,32 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 	frameWidth = frameHeight = 0;
 
 	logfileScalePairs = 0;
+
+
+
+	this->imageStream = imageStream;
+	this->outputWrapper = outputWrapper;
+	imageStream->getBuffer()->setReceiver(this);
+
+
+	outFileName = packagePath+"estimated_poses.txt";
+
+
+	isInitialized = false;
+
+
+	Sophus::Matrix3f K_sophus;
+	K_sophus << fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0;
+
+	outFile = nullptr;
+
+
+	// make Odometry
+	monoOdometry = new SlamSystem(width, height, K_sophus, doSlam);
+
+	monoOdometry->setVisualization(outputWrapper);
+
+	imageSeqNumber = 0;
 }
 
 
@@ -75,10 +103,6 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 void LSDWrapper::ResetInternal()
 {
 
-
-	if(inputStream != 0) delete inputStream;
-	if(outputWrapper != 0) delete outputWrapper;
-	if(lsdTracker != 0) delete lsdTracker;
 
 	InputImageStream* inputStream = new ROSImageStreamThread();
 
@@ -95,6 +119,20 @@ void LSDWrapper::ResetInternal()
 			file = node->packagePath + "/camcalib/ardrone1_default.txt";
 		else if(node->arDroneVersion == 2)
 			file = node->packagePath + "/camcalib/ardrone2_default.txt";
+	}
+
+	//Specify width and height for the monoOdometry module
+
+	if(monoOdometry != nullptr)
+	{
+		delete monoOdometry;
+		printf("Deleted SlamSystem Object!\n");
+
+		Sophus::Matrix3f K;
+		K << fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0;
+		monoOdometry = new SlamSystem(width,height,K, doSlam);
+		monoOdometry->setVisualization(outputWrapper);
+
 	}
 
 	//Setting the filestream
@@ -118,6 +156,10 @@ void LSDWrapper::ResetInternal()
 	flushMapKeypoints = false;
 
 	node->publishCommand("u l LSD has been reset.");
+	imageSeqNumber = 0;
+	isInitialized = false;
+
+	Util::closeAllWindows();
 }
 
 
@@ -127,6 +169,15 @@ LSDWrapper::~LSDWrapper(void)
 	if(predConvert != 0) delete predConvert;
 	if(predIMUOnlyForScale != 0) delete predIMUOnlyForScale;
 	if(imuOnlyPred != 0) delete imuOnlyPred;
+
+	if(monoOdometry != 0)
+		delete monoOdometry;
+	if(outFile != 0)
+	{
+		outFile->flush();
+		outFile->close();
+		delete outFile;
+	}
 
 }
 
@@ -284,15 +335,21 @@ void LSDWrapper::HandleFrame()
 
 	// --------------------------- assess result ------------------------------
 	bool isGood = true;
+	bool diverged = false;
 	
 	// calculate absolute differences.
 	TooN::Vector<6> diffs = LSDResultTransformed - filterPosePreLSD.slice<0,6>();
 	for(int i=0;1<1;i++) diffs[i] = abs(diffs[i]);
 
+	if(filter->getNumGoodPTAMObservations() < 10 && monoOdometry->IsGood())
+	{
+		isGood = true;
+	}
 
 	//If the last tracking step result is lost
 	else if(lsdTracker->lastStepResult == LOST)
 		isGood = false;
+		diverged = true;
 
 	else
 	{
@@ -601,6 +658,68 @@ void LSDWrapper::HandleFrame()
 }
 
 
+
+
+void LSDWrapper::newImageCallback(const cv::Mat& img, Timestamp imgTime)
+{
+
+	TooN::SE3<> LSDResultSE3;
+	++ imageSeqNumber;
+
+	// Convert image to grayscale, if necessary
+	cv::Mat grayImg;
+	if (img.channels() == 1)
+		grayImg = img;
+	else
+		cvtColor(img, grayImg, CV_RGB2GRAY);
+	
+
+	// Assert that we work with 8 bit images
+	assert(grayImg.elemSize() == 1);
+	assert(fx != 0 || fy != 0);
+
+
+	// need to initialize
+	if(!isInitialized)
+	{
+		monoOdometry->randomInit(grayImg.data, imgTime.toSec(), 1);
+		isInitialized = true;
+	}
+	else if(isInitialized && monoOdometry != nullptr)
+	{
+		monoOdometry->trackFrame(grayImg.data,imageSeqNumber,false,imgTime.toSec());
+	}
+	LSDResultSE3 = monoOdoemtry->getCurrentPoseEstimate();
+
+	return LSDResultSE3;
+}
+
+
+void LSD`Wrapper::logCameraPose(const SE3& camToWorld, double time)
+{
+	Sophus::Quaternionf quat = camToWorld.unit_quaternion().cast<float>();
+	Eigen::Vector3f trans = camToWorld.translation().cast<float>();
+
+	char buffer[1000];
+	int num = snprintf(buffer, 1000, "%f %f %f %f %f %f %f %f\n",
+			time,
+			trans[0],
+			trans[1],
+			trans[2],
+			quat.x(),
+			quat.y(),
+			quat.z(),
+			quat.w());
+
+	if(outFile == 0)
+		outFile = new std::ofstream(outFileName.c_str());
+	outFile->write(buffer,num);
+	outFile->flush();
+}
+
+
+
+
 /************************************************************************/
 
 // Draw the reference grid to give the user an idea of wether tracking is OK or not.
@@ -825,6 +944,7 @@ void LSDWrapper::newImage(sensor_msgs::ImageConstPtr img)
 	lock.unlock();
 	new_frame_signal.notify_all();
 }
+
 
 
 
