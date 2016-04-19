@@ -33,11 +33,14 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <vector>
 #include <boost/thread.hpp>
 #include <boost/foreach.hpp>
-#include "LSD-SLAM/lsd_slam/slam_system.h"
-#include "LSD-SLAM/lsd_slam/io_wrapper/ROS/ROSOutput3DWrapper.h"
-#include "LSD-SLAM/lsd_slam/io_wrapper/ROS/rosReconfigure.h"
+#include "LSD-SLAM/slam_system.h"
+#include "LSD-SLAM/io_wrapper/ROS/ROSOutput3DWrapper.h"
+#include "LSD-SLAM/io_wrapper/ROS/rosReconfigure.h"
+#include "LSD-SLAM/util/sophus_util.h"
+#include "LSD-SLAM/util/global_funcs.h"
 
 pthread_mutex_t LSDWrapper::navInfoQueueCS = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t LSDWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
@@ -70,7 +73,6 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde, Output3DWrappe
 
 	this->outputWrapper = outputWrapper;
 
-	outFileName = packagePath+"estimated_poses.txt";
 
 	isInitialized = false;
 
@@ -117,6 +119,8 @@ void LSDWrapper::ResetInternal()
 			file = node->packagePath + "/camcalib/ardrone2_default.txt";
 	}
 
+
+	outFileName = node->packagePath+"estimated_poses.txt";
 	//Specify width and height for the monoOdometry module
 
 	if(monoOdometry != nullptr)
