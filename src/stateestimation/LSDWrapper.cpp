@@ -124,9 +124,8 @@ void LSDWrapper::ResetInternal()
 		delete monoOdometry;
 		printf("Deleted SlamSystem Object!\n");
 
-		Sophus::Matrix3f K;
-		K << fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0;
-		monoOdometry = new SlamSystem(frameWidth, frameWidth, K, doSlam);
+		K_sophus << fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0;
+		monoOdometry = new SlamSystem(frameWidth, frameWidth, K_sophus, doSlam);
 		monoOdometry->setVisualization(outputWrapper);
 
 	}
@@ -204,9 +203,9 @@ void LSDWrapper::run()
 	while(!newImageAvailable)
 		usleep(100000);	// sleep 100ms
 
-	// read image height and width
-	frameWidth = mimFrameBW.size().x;
-	frameHeight = mimFrameBW.size().y;
+	// read image height and width**temporarily*** 
+	frameWidth = 640;
+	frameHeight = 480;
 
 	ResetInternal();
 
@@ -1044,22 +1043,6 @@ bool LSDWrapper::handleCommand(std::string s)
 		lockNextFrame = true;
 	}
 
-	if(s.length() == 13 && s.substr(0,13) == "toggleLockMap")
-	{
-		mapLocked = !mapLocked;
-
-
-		if(mapLocked)
-		{
-			node->publishCommand("u l PTAM map locked.");
-			printf("\n\nMAP LOCKED!\n\n\n");
-		}
-		else
-		{
-			printf("\n\nMAP UNLOCKED!\n\n\n");
-			node->publishCommand("u l PTAM map UNlocked.");
-		}
-	}
 
 	if(s.length() == 14 && s.substr(0,14) == "toggleLockSync")
 	{
