@@ -80,12 +80,13 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde, Output3DWrappe
 	TooN::Vector<5> camPar;
 	fleH >> camPar[0] >> camPar[1] >> camPar[2] >> camPar[3] >> camPar[4];
 	fleH.close();
-	std::cout<< "Set Camera Paramerer to: " << camPar[0] << " " << camPar[1] << " " << camPar[2] << " " << camPar[3] << " " << camPar[4] << std::endl;
+	std::cout<< "Set Camera Paramerer to: " << camPar[0] << " " << camPar[1] << " " << camPar[2] << " " << camPar[3] << " " << camPar[4] << camPar[5] << " " << camPar[6] << " " << camPar[7] << std::endl;
 	
 	K_sophus << camPar[0], 0.0, camPar[1], 0.0, camPar[2], camPar[3], 0.0, 0.0, 1.0;
 
 	outFile = nullptr;
-
+	frameWidth = camPar[4];
+	frameHeight = camPar[5];
 
 	// make Odometry
 	monoOdometry = new SlamSystem(frameWidth, frameHeight, K_sophus, doSlam);
@@ -100,8 +101,6 @@ LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde, Output3DWrappe
 void LSDWrapper::ResetInternal()
 {
 
-
-	InputImageStream* inputStream = new ROSImageStreamThread();
 
 	// read camera calibration (yes, its done here)
 	std::string calibFile;
@@ -127,7 +126,7 @@ void LSDWrapper::ResetInternal()
 
 		Sophus::Matrix3f K;
 		K << fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0;
-		monoOdometry = new SlamSystem(width,height,K, doSlam);
+		monoOdometry = new SlamSystem(frameWidth, frameWidth, K, doSlam);
 		monoOdometry->setVisualization(outputWrapper);
 
 	}
