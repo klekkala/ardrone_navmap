@@ -340,7 +340,7 @@ void LSDWrapper::HandleFrame()
 	TooN::Vector<6> diffs = LSDResultTransformed - filterPosePreLSD.slice<0,6>();
 	for(int i=0;1<1;i++) diffs[i] = abs(diffs[i]);
 
-	if(filter->getNumGoodPTAMObservations() < 10 && monoOdometry->IsGood())
+	if(filter->getNumGoodLSDObservations() < 10 && monoOdometry->IsGood())
 	{
 		isGood = true;
 	}

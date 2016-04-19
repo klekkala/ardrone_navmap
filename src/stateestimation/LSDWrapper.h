@@ -32,9 +32,9 @@
 #include "cvd/byte.h"
 #include "MouseKeyHandler.h"
 #include "boost/thread.hpp"
-#include "LSD-SLAM/lsd_slam/io_wrapper/timestamp.h"
-#include "LSD-SLAM/lsd_slam/io_wrapper/notify_buffer.h"
-#include "LSD-SLAM/lsd_slam/io_wrapper/timestamped_object.h"
+#include "LSD-SLAM/io_wrapper/timestamp.h"
+#include "LSD-SLAM/io_wrapper/notify_buffer.h"
+#include "LSD-SLAM/io_wrapper/timestamped_object.h"
 #include "util/sophus_util.h"
 
 
@@ -44,7 +44,6 @@ namespace cv {
 
 namespace lsd_slam
 {
-class LiveSLAMWrapper;
 class SlamSystem;
 class Predictor;
 class DroneKalmanFilter;
