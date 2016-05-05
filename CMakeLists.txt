@@ -3,7 +3,7 @@
 # Contributor: Stefan Wilkes <stefan.wilkes@gmail.com>
 #
 cmake_minimum_required(VERSION 2.8.3)
-project(tum_ardrone)
+project(ardrone_navmap)
 
 ## Find catkin macros and libraries
 find_package(catkin REQUIRED COMPONENTS
