@@ -5,9 +5,7 @@ all:
 	cd TooN && make
 	cd dirent-1.20.1 && make
 	cd eigen-3.2.1 && make
-	cd openFabMap && make
-	cd sophus && make
-	cd Sophus && make
+	cd openFabMap && mkdir -p build && cd build && cmake ../ && make
 
 
 clean:
@@ -18,8 +16,6 @@ clean:
 	cd dirent-1.20.1 && clean
 	cd eigen-3.2.1 && clean
 	cd openFabMap && clean
-	cd sophus && clean
-	cd Sophus && clean
 
 
 eclipse-project:
