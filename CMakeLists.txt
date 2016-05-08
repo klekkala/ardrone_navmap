@@ -154,12 +154,38 @@ set(STATEESTIMATION_HEADER_FILES
 
 )
 
+
 # set required libs and headers
 include_directories(
   ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/TooN/include 
   ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/libcvd/include 
   ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/gvars3/include 
+  ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/Sophus/
+  ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/sophus/
+  ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/eigen-3.2.1/build/Eigen/src
+
 )  
+
+if(NOT ANDROID)  # no nonfree-feature2d in opencv android build yet!!!
+  # FabMap
+  include_directories(${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/openFabMap/include)
+  add_definitions("-DHAVE_FABMAP")
+  set(FABMAP_LIB openFABMAP )  # no need, only *.dll generated
+endif()
+
+if(WIN32)
+  # Direct API
+  include_directories("$${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/dirent-1.20.1/include")
+endif()
+
+
+if(ANDROID)
+  add_definitions(-DENABLE_NEON)
+else()
+  add_definitions(-DENABLE_SSE)
+  set(CMAKE_CXX_RELEASE_FLAGS ${CMAKE_CXX_RELEASE_FLAGS} ${SSE_FLAGS})
+endif()
+
 
 link_directories(
   ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/libcvd/lib 
@@ -167,6 +193,9 @@ link_directories(
 )
 set(PTAM_LIBRARIES GL glut cvd GVars3 blas lapack)
 add_definitions(-DKF_REPROJ)
+
+
+
 
 # build!
 add_executable(drone_stateestimation ${STATEESTIMATION_SOURCE_FILES} ${STATEESTIMATION_HEADER_FILES})
