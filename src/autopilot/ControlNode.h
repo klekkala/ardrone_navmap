@@ -40,7 +40,7 @@
 
 class DroneKalmanFilter;
 class MapView;
-class LSDWrapper;
+class PTAMWrapper;
 class KIProcedure;
 
 
