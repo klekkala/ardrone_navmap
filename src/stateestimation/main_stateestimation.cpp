@@ -20,7 +20,7 @@
  
 #include "EstimationNode.h"
 #include "ros/ros.h"
-#include "LSDWrapper.h"
+#include "PTAMWrapper.h"
 #include "MapView.h"
 
 
@@ -38,18 +38,18 @@ int main(int argc, char **argv)
 
   EstimationNode estimator;
 
-  dynamic_reconfigure::Server<tum_ardrone::drone_stateestimationParamsConfig> srv;
+  dynamic_reconfigure::Server<tum_ardrone::StateestimationParamsConfig> srv;
   dynamic_reconfigure::Server<tum_ardrone::StateestimationParamsConfig>::CallbackType f;
   f = boost::bind(&EstimationNode::dynConfCb, &estimator, _1, _2);
   srv.setCallback(f);
 
-  estimator.lsdWrapper->startSystem();
+  estimator.ptamWrapper->startSystem();
   estimator.mapView->startSystem();
 
   estimator.Loop();
 
   estimator.mapView->stopSystem();
-  estimator.lsdWrapper->stopSystem();
+  estimator.ptamWrapper->stopSystem();
 
   return 0;
 }

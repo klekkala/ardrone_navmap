@@ -1,8 +1,11 @@
 # constants
-uint32 LSD_IDLE = 0           # PTAM not running.
-uint32 LSD_LOST = 1           # ptam is running, but lost
-uint32 LSD_GOOD = 2           # tracking quality OK
-uint32 LSD_TOOKKF = 3         # just took a new KF (equivalent to PTAM_BEST)
+uint32 PTAM_IDLE = 0           # PTAM not running.
+uint32 PTAM_INITIALIZING = 1   # initialization (trails)
+uint32 PTAM_LOST = 2           # ptam is running, but lost
+uint32 PTAM_GOOD = 3           # tracking quality OK
+uint32 PTAM_BEST = 4           # tracking quality best
+uint32 PTAM_TOOKKF = 5         # just took a new KF (equivalent to PTAM_BEST)
+uint32 PTAM_FALSEPOSITIVE = 6  # ptam thinks it is good, but its estimate is rejected.
 
 # header
 Header      header

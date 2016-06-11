@@ -12,6 +12,7 @@
  *  tum_ardrone is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
  *  along with tum_ardrone.  If not, see <http://www.gnu.org/licenses/>.
@@ -33,7 +34,7 @@
 #include <ardrone_autonomy/Navdata.h>
 #include "deque"
 #include "tum_ardrone/filter_state.h"
-#include "LSDWrapper.h"
+#include "PTAMWrapper.h"
 #include "std_msgs/String.h"
 #include "std_msgs/Empty.h"
 #include "std_srvs/Empty.h"
@@ -44,9 +45,9 @@
 using namespace std;
 
 pthread_mutex_t EstimationNode::logIMU_CS = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t EstimationNode::logLSD_CS = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t EstimationNode::logPTAM_CS = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t EstimationNode::logFilter_CS = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t EstimationNode::logLSDRaw_CS = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t EstimationNode::logPTAMRaw_CS = PTHREAD_MUTEX_INITIALIZER;
 
 EstimationNode::EstimationNode()
 {
@@ -91,15 +92,15 @@ EstimationNode::EstimationNode()
 	//tf_broadcaster();
 
 	// other internal vars
-	logfileIMU = logfileLSD = logfileFilter = logfileLSDRaw = 0;
+	logfileIMU = logfilePTAM = logfileFilter = logfilePTAMRaw = 0;
 	currentLogID = 0;
 	lastDroneTS = 0;
 	lastRosTS = 0;
 	droneRosTSOffset = 0;
 	lastNavStamp = ros::Time(0);
 	filter = new DroneKalmanFilter(this);
-	lsdWrapper = new LSDWrapper(filter, this);
-	mapView = new MapView(filter, lsdWrapper, this);
+	ptamWrapper = new PTAMWrapper(filter, this);
+	mapView = new MapView(filter, ptamWrapper, this);
 	arDroneVersion = 0;
 	//memset(&lastNavdataReceived,0,sizeof(ardrone_autonomy::Navdata));
 
@@ -110,7 +111,7 @@ EstimationNode::~EstimationNode()
 {
 	filter->release();
 	delete mapView;
-	delete lsdWrapper;
+	delete ptamWrapper;
 	delete filter;
 
 
@@ -170,7 +171,7 @@ void EstimationNode::navdataCb(const ardrone_autonomy::NavdataConstPtr navdataPt
 
 
 	// give to PTAM (for scale estimation)
-	lsdWrapper->newNavdata(&lastNavdataReceived);
+	ptamWrapper->newNavdata(&lastNavdataReceived);
 
 
 	// save last timestamp
@@ -213,14 +214,14 @@ void EstimationNode::velCb(const geometry_msgs::TwistConstPtr velPtr)
 void EstimationNode::vidCb(const sensor_msgs::ImageConstPtr img)
 {
 	// give to PTAM
-	lsdWrapper->newImage(img);
+	ptamWrapper->newImage(img);
 }
 
 void EstimationNode::comCb(const std_msgs::StringConstPtr str)
 {
 	if(str->data.length() > 2 && str->data.substr(0,2) == "p ")
 	{
-		lsdWrapper->handleCommand(str->data.substr(2,str->data.length()-2));
+		ptamWrapper->handleCommand(str->data.substr(2,str->data.length()-2));
 	}
 
 	if(str->data.length() > 2 && str->data.substr(0,2) == "f ")
@@ -273,7 +274,7 @@ void EstimationNode::Loop()
 		  s.header.stamp = ros::Time().now();
 		  s.scale = filter->getCurrentScales()[0];
 		  s.scaleAccuracy = filter->getScaleAccuracy();
-		  s.lsdState = lsdWrapper->LSDStatus;
+		  s.ptamState = ptamWrapper->PTAMStatus;
 		  s.droneState = lastNavdataReceived.state;
 		  s.batteryPercent = lastNavdataReceived.batteryPercent;
 
@@ -285,7 +286,7 @@ void EstimationNode::Loop()
 		  // if PTAM updates hang (no video or e.g. init), filter is never permanently rolled forward -> queues get too big.
 		  // dont allow this to happen by faking a ptam observation if queue gets too big (500ms = 100 observations)
 		  if((getMS(ros::Time().now()) - filter->predictdUpToTimestamp) > 500)
-			  filter->addFakeLSDObservation(getMS(ros::Time().now()) - 300);
+			  filter->addFakePTAMObservation(getMS(ros::Time().now()) - 300);
 
 
 		  // ---------- maybe send new info --------------------------
@@ -301,20 +302,25 @@ void EstimationNode::Loop()
 }
 void EstimationNode::dynConfCb(tum_ardrone::StateestimationParamsConfig &config, uint32_t level)
 {
-	if(!filter->allSyncLocked && config.LSDSyncLock)
-		ROS_WARN("Lsd Sync has been disabled. This fixes scale etc.");
+	if(!filter->allSyncLocked && config.PTAMSyncLock)
+		ROS_WARN("Ptam Sync has been disabled. This fixes scale etc.");
+
+	if(!ptamWrapper->mapLocked && config.PTAMMapLock)
+		ROS_WARN("Ptam Map has been locked.");
 
 
 	filter->useControl =config.UseControlGains;
-	filter->useLSD =config.UseLSD;
+	filter->usePTAM =config.UsePTAM;
 	filter->useNavdata =config.UseNavdata;
 
 	filter->useScalingFixpoint = config.RescaleFixOrigin;
 
-	filter->allSyncLocked = config.LSDSyncLock;
+	ptamWrapper->maxKF = config.PTAMMaxKF;
+	ptamWrapper->mapLocked = config.PTAMMapLock;
+	filter->allSyncLocked = config.PTAMSyncLock;
 
-	//Dynamic configuration params*****************
-	lsdWrapper->setPTAMPars(config.PTAMMinKFTimeDiff, config.PTAMMinKFWiggleDist, config.PTAMMinKFDist);
+
+	ptamWrapper->setPTAMPars(config.PTAMMinKFTimeDiff, config.PTAMMinKFWiggleDist, config.PTAMMinKFDist);
 
 
 	filter->c1 = config.c1;
@@ -365,19 +371,19 @@ void EstimationNode::publishTf(TooN::SE3<> trans, ros::Time stamp, int seq, std:
 
 
 
-	if(logfileLSDRaw != NULL)
+	if(logfilePTAMRaw != NULL)
 	{
-		pthread_mutex_lock(&(logLSDRaw_CS));
+		pthread_mutex_lock(&(logPTAMRaw_CS));
 		// log:
 		// - filterPosePrePTAM estimated for videoFrameTimestamp-delayVideo.
 		// - PTAMResulttransformed estimated for videoFrameTimestamp-delayVideo. (using imu only for last step)
 		// - predictedPoseSpeed estimated for lastNfoTimestamp+filter->delayControl	(actually predicting)
 		// - predictedPoseSpeedATLASTNFO estimated for lastNfoTimestamp	(using imu only)
-		if(logfileLSDRaw != NULL)
-			(*(logfileLSDRaw)) << seq << " " << stamp << " " << tr.getOrigin().x() << " " << tr.getOrigin().y() << " " << tr.getOrigin().z() << " " <<
+		if(logfilePTAMRaw != NULL)
+			(*(logfilePTAMRaw)) << seq << " " << stamp << " " << tr.getOrigin().x() << " " << tr.getOrigin().y() << " " << tr.getOrigin().z() << " " <<
 			tr.getRotation().x() << " " << tr.getRotation().y() << " " << tr.getRotation().z() << " " << tr.getRotation().w() << std::endl;
 
-		pthread_mutex_unlock(&(logLSDRaw_CS));
+		pthread_mutex_unlock(&(logPTAMRaw_CS));
 	}
 
 }
@@ -427,21 +433,21 @@ void EstimationNode::toogleLogging()
 
 
 	// IMU
-	pthread_mutex_lock(&logLSD_CS);
-	if(logfileLSD == 0)
+	pthread_mutex_lock(&logPTAM_CS);
+	if(logfilePTAM == 0)
 	{
-		logfileLSD = new std::ofstream();
-		sprintf(buf,"%s/logs/%ld/logLSD.txt",packagePath.c_str(),currentLogID);
-		logfileLSD->open (buf);
+		logfilePTAM = new std::ofstream();
+		sprintf(buf,"%s/logs/%ld/logPTAM.txt",packagePath.c_str(),currentLogID);
+		logfilePTAM->open (buf);
 	}
 	else
 	{
-		logfileLSD->flush();
-		logfileLSD->close();
-		delete logfileLSD;
-		logfileLSD = NULL;
+		logfilePTAM->flush();
+		logfilePTAM->close();
+		delete logfilePTAM;
+		logfilePTAM = NULL;
 	}
-	pthread_mutex_unlock(&logLSD_CS);
+	pthread_mutex_unlock(&logPTAM_CS);
 
 
 
@@ -464,21 +470,21 @@ void EstimationNode::toogleLogging()
 
 
 	// IMU
-	pthread_mutex_lock(&logLSDRaw_CS);
-	if(logfileLSDRaw == 0)
+	pthread_mutex_lock(&logPTAMRaw_CS);
+	if(logfilePTAMRaw == 0)
 	{
-		logfileLSDRaw = new std::ofstream();
-		sprintf(buf,"%s/logs/%ld/logLSDRaw.txt",packagePath.c_str(),currentLogID);
-		logfileLSDRaw->open (buf);
+		logfilePTAMRaw = new std::ofstream();
+		sprintf(buf,"%s/logs/%ld/logPTAMRaw.txt",packagePath.c_str(),currentLogID);
+		logfilePTAMRaw->open (buf);
 	}
 	else
 	{
-		logfileLSDRaw->flush();
-		logfileLSDRaw->close();
-		delete logfileLSDRaw;
-		logfileLSDRaw = NULL;
+		logfilePTAMRaw->flush();
+		logfilePTAMRaw->close();
+		delete logfilePTAMRaw;
+		logfilePTAMRaw = NULL;
 	}
-	pthread_mutex_unlock(&logLSDRaw_CS);
+	pthread_mutex_unlock(&logPTAMRaw_CS);
 
 
 	if(quitLogging)
@@ -496,32 +502,39 @@ void EstimationNode::reSendInfo()
 {
 
 	// get ptam status string
-	std::string lsdStatus;
-	switch(lsdWrapper->LSDStatus)
+	std::string ptamStatus;
+	switch(ptamWrapper->PTAMStatus)
 	{
-	case lsdWrapper::LSD_IDLE:
-		lsdStatus = "Idle";
+	case PTAMWrapper::PTAM_IDLE:
+		ptamStatus = "Idle";
 		break;
-	case lsdWrapper::LSD_LOST:
-		lsdStatus = "Lost";
+	case PTAMWrapper::PTAM_INITIALIZING:
+		ptamStatus = "Initializing";
 		break;
-	case lsdWrapper::LSD_GOOD:
-		lsdStatus = "Good";
+	case PTAMWrapper::PTAM_LOST:
+		ptamStatus = "Lost";
 		break;
-	case lsdWrapper::LSD_TOOKKF:
-		lsdStatus = "Best";
+	case PTAMWrapper::PTAM_FALSEPOSITIVE:
+		ptamStatus = "FalsePositive";
+		break;
+	case PTAMWrapper::PTAM_GOOD:
+		ptamStatus = "Good";
+		break;
+	case PTAMWrapper::PTAM_TOOKKF:
+	case PTAMWrapper::PTAM_BEST:
+		ptamStatus = "Best";
 		break;
 	}
 
 
 
 	// parse PTAM message
-	std::string lsdMsg = lsdWrapper->lastLSDMessage;
+	std::string ptamMsg = ptamWrapper->lastPTAMMessage;
 	int kf, kp, kps[4], kpf[4];
-	int pos = lsdMsg.find("Found: ");
+	int pos = ptamMsg.find("Found: ");
 	int found = 0;
 	if(pos != std::string::npos)
-		found = sscanf(lsdMsg.substr(pos).c_str(),"Found: %d/%d %d/%d %d/%d %d/%d Map: %dP, %dKF",
+		found = sscanf(ptamMsg.substr(pos).c_str(),"Found: %d/%d %d/%d %d/%d %d/%d Map: %dP, %dKF",
 						&kpf[0],&kps[0],&kpf[1],&kps[1],&kpf[2],&kps[2],&kpf[3],&kps[3],&kp,&kf);
 	char bufp[200];
 	if(found == 10)
@@ -554,8 +567,8 @@ void EstimationNode::reSendInfo()
 	Status: X (Battery: X)
 	*/
 	char buf[1000];
-	snprintf(buf,1000,"u s LSD: %s\n%s\nScale: %.3f (%d in, %d out), acc: %.2f\nScaleFixpoint: %s\nDrone Status: %s (%d Battery)",
-			lsdStatus.c_str(),
+	snprintf(buf,1000,"u s PTAM: %s\n%s\nScale: %.3f (%d in, %d out), acc: %.2f\nScaleFixpoint: %s\nDrone Status: %s (%d Battery)",
+			ptamStatus.c_str(),
 			bufp,
 			filter->getCurrentScales()[0],filter->scalePairsIn,filter->scalePairsOut,filter->getScaleAccuracy(),
 			filter->useScalingFixpoint ? "FIX" : "DRONE",
