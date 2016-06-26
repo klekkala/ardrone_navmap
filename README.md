@@ -1,4 +1,5 @@
-# Package tum_ardrone
+# Package ardrone_imu
+
 
 This package contains the implementation corresponding to the following publications:
 
@@ -10,6 +11,7 @@ You can find a [video](https://www.youtube.com/watch?feature=player_embedded&v=e
 This Package builds on the well known monocular SLAM framework PTAM presented by Klein & Murray in their paper at ISMAR07. Please study the original PTAM website and the corresponding paper for more information on this part of the software. Also, be aware of the license that comes with it. 
 
 The code works for both the AR.Drone 1.0 and 2.0, the default-parameters however are optimized for the AR.Drone 2.0 by now.
+
 
 ## Installation
 

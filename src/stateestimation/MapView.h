@@ -32,7 +32,7 @@
 
 
 class DroneKalmanFilter;
-class LSDWrapper;
+class PTAMWrapper;
 class Predictor;
 class EstimationNode;
 
@@ -42,17 +42,17 @@ public:
 	inline TrailPoint(TooN::Vector<3> filter)
 	{
 		pointFilter = filter;
-		LSDValid = false;
+		PTAMValid = false;
 	}
-	inline TrailPoint(TooN::Vector<3> filter, TooN::Vector<3> lsd)
+	inline TrailPoint(TooN::Vector<3> filter, TooN::Vector<3> ptam)
 	{
 		pointFilter = filter;
-		pointLSD = lsd;
-		LSDValid = true;
+		pointPTAM = ptam;
+		PTAMValid = true;
 	}
-	TooN::Vector<3> pointLSD;
+	TooN::Vector<3> pointPTAM;
 	TooN::Vector<3> pointFilter;
-	bool LSDValid;
+	bool PTAMValid;
 };
 
 class MapView : private CVD::Thread, private MouseKeyHandler
@@ -77,7 +77,7 @@ private:
 	void Render();
 
 	DroneKalmanFilter* filter;
-	LSDWrapper* lsdWrapper;
+	PTAMWrapper* ptamWrapper;
 	EstimationNode* node;
 
 	bool resetRequested;
@@ -123,7 +123,7 @@ private:
 
 public:
 
-	MapView(DroneKalmanFilter* f, LSDWrapper* p, EstimationNode* nde);
+	MapView(DroneKalmanFilter* f, PTAMWrapper* p, EstimationNode* nde);
 	~MapView(void);
 
 	bool handleCommand(std::string s);
