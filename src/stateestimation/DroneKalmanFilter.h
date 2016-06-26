@@ -38,34 +38,34 @@ class EstimationNode;
 class ScaleStruct
 {
 public:
-	TooN::Vector<3> lsd;
+	TooN::Vector<3> ptam;
 	TooN::Vector<3> imu;
-	double lsdNorm;
+	double ptamNorm;
 	double imuNorm;
 	double alphaSingleEstimate;
 	double pp, ii, pi;
 
-	inline double computeEstimator(double spp, double sii, double spi, double stdDevLSD = 0.2, double stdDevIMU = 0.1)
+	inline double computeEstimator(double spp, double sii, double spi, double stdDevPTAM = 0.2, double stdDevIMU = 0.1)
 	{
-		double sII = stdDevLSD * stdDevLSD * sii;
+		double sII = stdDevPTAM * stdDevPTAM * sii;
 		double sPP = stdDevIMU * stdDevIMU * spp;
-		double sPI = stdDevIMU * stdDevLSD * spi;
+		double sPI = stdDevIMU * stdDevPTAM * spi;
 
 		double tmp = (sII-sPP)*(sII-sPP) + 4*sPI*sPI;
 		if(tmp <= 0) tmp = 1e-5;	// numeric issues
-		return 0.5*((sII-sPP)+sqrt(tmp)) / (stdDevLSD * stdDevLSD * spi);
+		return 0.5*((sII-sPP)+sqrt(tmp)) / (stdDevPTAM * stdDevPTAM * spi);
 
 	}
 
-	inline ScaleStruct(TooN::Vector<3> lsdDist, TooN::Vector<3> imuDist)
+	inline ScaleStruct(TooN::Vector<3> ptamDist, TooN::Vector<3> imuDist)
 	{
-		lsd = lsdDist;
+		ptam = ptamDist;
 		imu = imuDist;
-		pp = lsd[0]*lsd[0] + lsd[1]*lsd[1] + lsd[2]*lsd[2];
+		pp = ptam[0]*ptam[0] + ptam[1]*ptam[1] + ptam[2]*ptam[2];
 		ii = imu[0]*imu[0] + imu[1]*imu[1] + imu[2]*imu[2];
-		pi = imu[0]*lsd[0] + imu[1]*lsd[1] + imu[2]*lsd[2];
+		pi = imu[0]*ptam[0] + imu[1]*ptam[1] + imu[2]*ptam[2];
 
-		lsdNorm = sqrt(pp);
+		ptamNorm = sqrt(pp);
 		imuNorm = sqrt(ii);
 
 		alphaSingleEstimate = computeEstimator(pp,ii,pi);
@@ -253,8 +253,8 @@ private:
 
 	// intermediate values for re-estimation of relaton parameters
 	double xyz_sum_IMUxIMU;
-	double xyz_sum_LSDxLSD;
-	double xyz_sum_LSDxIMU;
+	double xyz_sum_PTAMxPTAM;
+	double xyz_sum_PTAMxIMU;
 	double rp_offset_framesContributed;
 	std::vector<ScaleStruct>* scalePairs;
 
@@ -266,7 +266,7 @@ private:
 	long last_z_packageID;
 	
 	// contains the last ptam-pose added (raw ptam-data).
-	TooN::Vector<3> last_LSD_pose;
+	TooN::Vector<3> last_PTAM_pose;
 
 	// contains the pose directly after the last ptam-fuse.
 	TooN::Vector<3> last_fused_pose;
@@ -275,7 +275,7 @@ private:
 
 	// statistics parameters
 	int numGoodIMUObservations;
-	int numGoodLSDObservations;
+	int numGoodPTAMObservations;
 
 	// parameters used for adding / timing
 	long lastIMU_XYZ_dronetime;
@@ -291,7 +291,7 @@ private:
 	void predictInternal(geometry_msgs::Twist activeControlInfo, int timeSpanMicros, bool useControlGains = true);
 	void observeIMU_XYZ(const ardrone_autonomy::Navdata* nav);
 	void observeIMU_RPY(const ardrone_autonomy::Navdata* nav);
-	void observeLSD(TooN::Vector<6> pose);
+	void observePTAM(TooN::Vector<6> pose);
 
 
 	// internal sync functions. called on ptam-add.
@@ -346,7 +346,7 @@ public:
 
 
 	// resets everything to do with PTAM to zero (call if tracking continues, but PTAM tracking is reset)
-	void clearLSD();
+	void clearPTAM();
 
 	// predicts up to a specified time in ms, using all available data.
 	// if consume=false, does not delete anything from queues.
@@ -367,7 +367,7 @@ public:
 	void setCurrentScales(TooN::Vector<3> scales);
 
 	// adds a PTAM observation. automatically predicts up to timestamp.
-	void updateScaleXYZ(TooN::Vector<3> lsdDiff, TooN::Vector<3> imuDiff, TooN::Vector<3> OrgLsdPose);
+	void updateScaleXYZ(TooN::Vector<3> ptamDiff, TooN::Vector<3> imuDiff, TooN::Vector<3> OrgPtamPose);
 
 
 	// does not actually change the state of the filter.
@@ -376,12 +376,12 @@ public:
 
 	// transforms a PTAM observation.
 	// translates from front to center, scales and adds offsets.
-	TooN::Vector<3> transformLSDObservation(double x,double y,double z);
-	TooN::Vector<3> transformLSDObservation(double x,double y,double z, double yaw);
-	TooN::Vector<6> transformLSDObservation(TooN::Vector<6> obs);
-	TooN::Vector<6> backTransformLSDObservation(TooN::Vector<6> obs);
+	TooN::Vector<3> transformPTAMObservation(double x,double y,double z);
+	TooN::Vector<3> transformPTAMObservation(double x,double y,double z, double yaw);
+	TooN::Vector<6> transformPTAMObservation(TooN::Vector<6> obs);
+	TooN::Vector<6> backTransformPTAMObservation(TooN::Vector<6> obs);
 
-	inline int getNumGoodLSDObservations() {return numGoodLSDObservations;}
+	inline int getNumGoodPTAMObservations() {return numGoodPTAMObservations;}
 
 	// when scaling factors are updated, exacly one point stays the same.
 	// if useScalingFixpoint, this point is the current PTAM pose, otherwise it is sclingFixpoint (which is a PTAM-coordinate(!))
@@ -395,7 +395,7 @@ public:
 	bool allSyncLocked;
 	bool useControl;
 	bool useNavdata;
-	bool useLSD;
+	bool usePTAM;
 
 	// motion model parameters
 	float c1;
@@ -407,13 +407,16 @@ public:
 	float c7;
 	float c8;
 
+	double vx_local;
+	double vy_local;
+	
 
 
 	bool handleCommand(std::string s);
 
 	// new ROS interface functions
-	void addLSDObservation(TooN::Vector<6> trans, int time);
-	void addFakeLSDObservation(int time);
+	void addPTAMObservation(TooN::Vector<6> trans, int time);
+	void addFakePTAMObservation(int time);
 	tum_ardrone::filter_state getPoseAt(ros::Time t, bool useControlGains = true);
 	TooN::Vector<10> getPoseAtAsVec(int timestamp, bool useControlGains = true);
 

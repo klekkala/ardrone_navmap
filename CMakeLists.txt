@@ -3,7 +3,7 @@
 # Contributor: Stefan Wilkes <stefan.wilkes@gmail.com>
 #
 cmake_minimum_required(VERSION 2.8.3)
-project(ardrone_navmap)
+project(tum_ardrone)
 
 ## Find catkin macros and libraries
 find_package(catkin REQUIRED COMPONENTS
@@ -71,121 +71,67 @@ include_directories(${catkin_INCLUDE_DIRS})
 # --------------------------- stateestimation & PTAM --------------------------------
 # set header ans source files
 set(STATEESTIMATION_SOURCE_FILES       
-  src/stateestimation/LSD-SLAM/util/undistorter.cc
-  src/stateestimation/LSD-SLAM/util/sophus_util.cc
-  src/stateestimation/LSD-SLAM/util/settings.cc
-  src/stateestimation/LSD-SLAM/util/global_funcs.cc
-  src/stateestimation/LSD-SLAM/tracking/tracking_reference.cc
-  src/stateestimation/LSD-SLAM/tracking/sim3_tracker.cc
-  src/stateestimation/LSD-SLAM/tracking/se3_tracker.cc
-  src/stateestimation/LSD-SLAM/tracking/relocalizer.cc
-  src/stateestimation/LSD-SLAM/tracking/least_squares.cc
-  src/stateestimation/LSD-SLAM/slam_system.cc
-  src/stateestimation/LSD-SLAM/model/frame_pose_struct.cc
-  src/stateestimation/LSD-SLAM/model/frame_memory.cc
-  src/stateestimation/LSD-SLAM/model/frame.cc
-  src/stateestimation/LSD-SLAM/io_wrapper/timestamp.cc
-  src/stateestimation/LSD-SLAM/io_wrapper/ImageDisplay_OpenCV.cc
-  src/stateestimation/LSD-SLAM/global_mapping/trackable_key_frame_search.cc
-  src/stateestimation/LSD-SLAM/global_mapping/key_frame_graph.cc
-  src/stateestimation/LSD-SLAM/global_mapping/g2o_type_sim3_sophus.cc
-  src/stateestimation/LSD-SLAM/global_mapping/fab_map.cc
-  src/stateestimation/LSD-SLAM/depth_estimation/depth_map_pixel_hypothesis.cc
-  src/stateestimation/LSD-SLAM/depth_estimation/depth_map.cc
-  src/stateestimation/GLWindowMenu.cc
-  src/stateestimation/GLWindow2.cc
-  src/stateestimation/Predictor.cpp
+	src/stateestimation/GLWindow2.cc
+	src/stateestimation/GLWindowMenu.cc  
+	src/stateestimation/main_stateestimation.cpp
+	src/stateestimation/DroneKalmanFilter.cpp
+	src/stateestimation/Predictor.cpp
+  src/stateestimation/PTAMWrapper.cpp
   src/stateestimation/MapView.cpp
-  src/stateestimation/main_stateestimation.cpp
-  src/stateestimation/LSDWrapper.cpp
-  src/stateestimation/LSD-SLAM/MapView.cpp
-  src/stateestimation/LSD-SLAM/io_wrapper/ROS/ROSOutput3DWrapper.cpp
-  src/stateestimation/LSD-SLAM/io_wrapper/ROS/ROSImageStreamThread.cpp
-  src/stateestimation/LSD-SLAM/io_wrapper/OpenCVImageStreamThread.cpp
   src/stateestimation/EstimationNode.cpp
-  src/stateestimation/DroneKalmanFilter.cpp
-
-
+  src/stateestimation/PTAM/ATANCamera.cc
+  src/stateestimation/PTAM/Bundle.cc
+  src/stateestimation/PTAM/HomographyInit.cc
+  src/stateestimation/PTAM/KeyFrame.cc
+  src/stateestimation/PTAM/Map.cc
+  src/stateestimation/PTAM/MapMaker.cc
+  src/stateestimation/PTAM/MapPoint.cc
+  src/stateestimation/PTAM/MiniPatch.cc
+  src/stateestimation/PTAM/PatchFinder.cc
+  src/stateestimation/PTAM/Relocaliser.cc
+  src/stateestimation/PTAM/ShiTomasi.cc
+  src/stateestimation/PTAM/SmallBlurryImage.cc
+  src/stateestimation/PTAM/Tracker.cc
 )
-set(STATEESTIMATION_HEADER_FILES   
-  src/stateestimation/Predictor.h
-  src/stateestimation/MouseKeyHandler.h
+set(STATEESTIMATION_HEADER_FILES    
+  src/stateestimation/GLWindow2.h 
+  src/stateestimation/GLWindowMenu.h    
+  src/stateestimation/MouseKeyHandler.h  
+  src/HelperFunctions.h   
+  src/stateestimation/DroneKalmanFilter.h        
+  src/stateestimation/Predictor.h 
+  src/stateestimation/PTAMWrapper.h
   src/stateestimation/MapView.h
-  src/stateestimation/LSDWrapper.h
-  src/stateestimation/LSD-SLAM/util/undistorter.h
-  src/stateestimation/LSD-SLAM/util/sophus_util.h
-  src/stateestimation/LSD-SLAM/util/sophus_util.cc
-  src/stateestimation/LSD-SLAM/util/snprintf.h
-  src/stateestimation/LSD-SLAM/util/settings.h
-  src/stateestimation/LSD-SLAM/util/index_thread_reduce.h
-  src/stateestimation/LSD-SLAM/util/global_funcs.h
-  src/stateestimation/LSD-SLAM/util/eigen_core_include.h
-  src/stateestimation/LSD-SLAM/tracking/tracking_reference.h
-  src/stateestimation/LSD-SLAM/tracking/sim3_tracker.h
-  src/stateestimation/LSD-SLAM/tracking/se3_tracker.h
-  src/stateestimation/LSD-SLAM/tracking/relocalizer.h
-  src/stateestimation/LSD-SLAM/tracking/least_squares.h
-  src/stateestimation/LSD-SLAM/slam_system.h
-  src/stateestimation/LSD-SLAM/OpenGL.h
-  src/stateestimation/LSD-SLAM/model/frame_pose_struct.h
-  src/stateestimation/LSD-SLAM/model/frame_memory.h
-  src/stateestimation/LSD-SLAM/model/frame.h
-  src/stateestimation/LSD-SLAM/MapView.h
-  src/stateestimation/LSD-SLAM/io_wrapper/timestamp.h
-  src/stateestimation/LSD-SLAM/io_wrapper/timestamped_object.h
-  src/stateestimation/LSD-SLAM/io_wrapper/ROS/rosReconfigure.h
-  src/stateestimation/LSD-SLAM/io_wrapper/ROS/ROSOutput3DWrapper.h
-  src/stateestimation/LSD-SLAM/io_wrapper/ROS/ROSImageStreamThread.h
-  src/stateestimation/LSD-SLAM/io_wrapper/output_3d_wrapper.h
-  src/stateestimation/LSD-SLAM/io_wrapper/OpenCVImageStreamThread.h
-  src/stateestimation/LSD-SLAM/io_wrapper/notify_buffer.h
-  src/stateestimation/LSD-SLAM/io_wrapper/input_image_stream.h
-  src/stateestimation/LSD-SLAM/io_wrapper/image_display.h
-  src/stateestimation/LSD-SLAM/global_mapping/trackable_key_frame_search.h
-  src/stateestimation/LSD-SLAM/global_mapping/key_frame_graph.h
-  src/stateestimation/LSD-SLAM/global_mapping/g2o_type_sim3_sophus.h
-  src/stateestimation/LSD-SLAM/global_mapping/fab_map.h
-  src/stateestimation/LSD-SLAM/depth_estimation/depth_map_pixel_hypothesis.h
-  src/stateestimation/LSD-SLAM/depth_estimation/depth_map.h
-  src/stateestimation/GLWindowMenu.h
-  src/stateestimation/GLWindow2.h
   src/stateestimation/EstimationNode.h
-  src/stateestimation/DroneKalmanFilter.h
-
+  src/stateestimation/PTAM/ATANCamera.h
+  src/stateestimation/PTAM/Bundle.h
+  src/stateestimation/PTAM/customFixes.h
+  src/stateestimation/PTAM/HomographyInit.h
+  src/stateestimation/PTAM/KeyFrame.h
+  src/stateestimation/PTAM/LevelHelpers.h
+  src/stateestimation/PTAM/Map.h
+  src/stateestimation/PTAM/MapMaker.h
+  src/stateestimation/PTAM/MapPoint.h
+  src/stateestimation/PTAM/MEstimator.h
+  src/stateestimation/PTAM/MiniPatch.h
+  src/stateestimation/PTAM/OpenGL.h
+  src/stateestimation/PTAM/PatchFinder.h
+  src/stateestimation/PTAM/Relocaliser.h
+  src/stateestimation/PTAM/settingsCustom.h
+  src/stateestimation/PTAM/ShiTomasi.h
+  src/stateestimation/PTAM/SmallBlurryImage.h
+  src/stateestimation/PTAM/SmallMatrixOpts.h
+  src/stateestimation/PTAM/TrackerData.h
+  src/stateestimation/PTAM/Tracker.h
+  src/stateestimation/PTAM/VideoSource.h
 )
-
 
 # set required libs and headers
 include_directories(
   ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/TooN/include 
   ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/libcvd/include 
   ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/gvars3/include 
-  ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/Sophus/
-  ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/sophus/
-  ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/eigen-3.2.1/build/Eigen/src
-
 )  
-
-if(NOT ANDROID)  # no nonfree-feature2d in opencv android build yet!!!
-  # FabMap
-  include_directories(${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/openFabMap/include)
-  add_definitions("-DHAVE_FABMAP")
-  set(FABMAP_LIB openFABMAP )  # no need, only *.dll generated
-endif()
-
-if(WIN32)
-  # Direct API
-  include_directories("$${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/dirent-1.20.1/include")
-endif()
-
-
-if(ANDROID)
-  add_definitions(-DENABLE_NEON)
-else()
-  add_definitions(-DENABLE_SSE)
-  set(CMAKE_CXX_RELEASE_FLAGS ${CMAKE_CXX_RELEASE_FLAGS} ${SSE_FLAGS})
-endif()
-
 
 link_directories(
   ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/libcvd/lib 
@@ -193,9 +139,6 @@ link_directories(
 )
 set(PTAM_LIBRARIES GL glut cvd GVars3 blas lapack)
 add_definitions(-DKF_REPROJ)
-
-
-
 
 # build!
 add_executable(drone_stateestimation ${STATEESTIMATION_SOURCE_FILES} ${STATEESTIMATION_HEADER_FILES})
