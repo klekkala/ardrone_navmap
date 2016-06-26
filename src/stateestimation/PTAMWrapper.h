@@ -90,6 +90,7 @@ private:
 	Map *mpMap; 
 	MapMaker *mpMapMaker; 
 	Tracker *mpTracker; 
+	BundleAdjusterSingle* mpBundleAdjuster;
 	ATANCamera *mpCamera;
 	Predictor* predConvert;			// used ONLY to convert from rpy to se3 and back, i.e. never kept in some state.
 	Predictor* predIMUOnlyForScale;	// used for scale calculation. needs to be updated with every new navinfo...

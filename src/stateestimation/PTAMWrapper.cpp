@@ -28,6 +28,7 @@
 #include "PTAM/Tracker.h"
 #include "PTAM/Map.h"
 #include "PTAM/MapPoint.h"
+#include "PTAM/BundleAdjusterSingle.h"
 #include "../HelperFunctions.h"
 #include "Predictor.h"
 #include "DroneKalmanFilter.h"
@@ -51,7 +52,8 @@ PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 
 	mpMap = 0; 
 	mpMapMaker = 0; 
-	mpTracker = 0; 
+	mpTracker = 0;
+	mpBundleAdjuster = 0;
 	predConvert = 0;
 	predIMUOnlyForScale = 0;
 	mpCamera = 0;
@@ -114,8 +116,11 @@ void PTAMWrapper::ResetInternal()
 
 	mpMap = new Map;
 	mpCamera = new ATANCamera(camPar);
-	mpMapMaker = new MapMaker(*mpMap, *mpCamera);
+	mpBundleAdjuster = new BundleAdjusterSingle(*mpMap, mmCameraModels, true, false);
+	//mpMapMaker = new MapMaker(*mpMap, *mpCamera);
+	mpMapMaker = new MapMaker(*mpMap, mmCameraModels, *mpBundleAdjuster);
 	mpTracker = new Tracker(CVD::ImageRef(frameWidth, frameHeight), *mpCamera, *mpMap, *mpMapMaker);
+
 
 	setPTAMPars(minKFTimeDist, minKFWiggleDist, minKFDist);
 
@@ -155,6 +160,7 @@ PTAMWrapper::~PTAMWrapper(void)
 	if(mpMap != 0) delete mpMap;
 	if(mpMapMaker != 0) delete mpMapMaker;
 	if(mpTracker != 0) delete mpTracker;
+	if(mpBundleAdjuster != 0) delete mpBundleAdjuster;
 	if(predConvert != 0) delete predConvert;
 	if(predIMUOnlyForScale != 0) delete predIMUOnlyForScale;
 	if(imuOnlyPred != 0) delete imuOnlyPred;

@@ -1,7 +1,7 @@
 // Copyright 2008 Isis Innovation Limited
 #include "MapMaker.h"
 #include "MapPoint.h"
-#include "Bundle.h"
+#include "ChainBundle.h"
 #include "PatchFinder.h"
 #include "SmallMatrixOpts.h"
 #include "HomographyInit.h"
@@ -836,7 +836,7 @@ void MapMaker::BundleAdjustRecent()
 // Common bundle adjustment code. This creates a bundle-adjust instance, populates it, and runs it.
 void MapMaker::BundleAdjust(set<KeyFrame*> sAdjustSet, set<KeyFrame*> sFixedSet, set<MapPoint*> sMapPoints, bool bRecent)
 {
-  Bundle b(mCamera);   // Our bundle adjuster
+  ChainBundle b(mCamera, mbUseRobust, mbUseTukey, false);   // Our bundle adjuster
   mbBundleRunning = true;
   mbBundleRunningIsRecent = bRecent;
   
@@ -850,13 +850,13 @@ void MapMaker::BundleAdjust(set<KeyFrame*> sAdjustSet, set<KeyFrame*> sFixedSet,
   // Add the keyframes' poses to the bundle adjuster. Two parts: first nonfixed, then fixed.
   for(set<KeyFrame*>::iterator it = sAdjustSet.begin(); it!= sAdjustSet.end(); it++)
     {
-      int nBundleID = b.AddCamera((*it)->se3CfromW, (*it)->bFixed);
+      int nBundleID = b.AddPose((*it)->se3CfromW, (*it)->bFixed);
       mView_BundleID[*it] = nBundleID;
       mBundleID_View[nBundleID] = *it;
     }
   for(set<KeyFrame*>::iterator it = sFixedSet.begin(); it!= sFixedSet.end(); it++)
     {
-      int nBundleID = b.AddCamera((*it)->se3CfromW, true);
+      int nBundleID = b.AddPose((*it)->se3CfromW, true);
       mView_BundleID[*it] = nBundleID;
       mBundleID_View[nBundleID] = *it;
     }
@@ -864,7 +864,7 @@ void MapMaker::BundleAdjust(set<KeyFrame*> sAdjustSet, set<KeyFrame*> sFixedSet,
   // Add the points' 3D position
   for(set<MapPoint*>::iterator it = sMapPoints.begin(); it!=sMapPoints.end(); it++)
     {
-      int nBundleID = b.AddPoint((*it)->v3WorldPos);
+      int nBundleID = b.AddPose((*it)->v3WorldPos, true);
       mPoint_BundleID[*it] = nBundleID;
       mBundleID_Point[nBundleID] = *it;
     }
@@ -882,8 +882,12 @@ void MapMaker::BundleAdjust(set<KeyFrame*> sAdjustSet, set<KeyFrame*> sFixedSet,
 	{
 	  if(mPoint_BundleID.count(it->first) == 0)
 	    continue;
+
+    std::vector<int> vCams(1);
+    vCams[0] = nKF_BundleID;
 	  int nPoint_BundleID = mPoint_BundleID[it->first];
-	  b.AddMeas(nKF_BundleID, nPoint_BundleID, it->second.v2RootPos, LevelScale(it->second.nLevel) * LevelScale(it->second.nLevel));
+    
+	  b.AddMeas(vCams, nKF_BundleID, nPoint_BundleID, it->second.v2RootPos, LevelScale(it->second.nLevel) * LevelScale(it->second.nLevel));
 	}
     }
   
@@ -909,11 +913,13 @@ void MapMaker::BundleAdjust(set<KeyFrame*> sAdjustSet, set<KeyFrame*> sFixedSet,
 	  itr!=mPoint_BundleID.end();
 	  itr++)
 	itr->first->v3WorldPos = b.GetPoint(itr->second);
+
+
       
       for(map<KeyFrame*,int>::iterator itr = mView_BundleID.begin();
 	  itr!=mView_BundleID.end();
 	  itr++)
-	itr->first->se3CfromW = b.GetCamera(itr->second);
+	itr->first->se3CfromW = b.GetPose(itr->second);
       if(bRecent)
 	mbBundleConverged_Recent = false;
       mbBundleConverged_Full = false;
@@ -949,6 +955,10 @@ void MapMaker::BundleAdjust(set<KeyFrame*> sAdjustSet, set<KeyFrame*> sFixedSet,
 	  pp->pMMData->sMeasurementKFs.erase(pk);
 	}
     }
+
+  mdSigmaSquared = b.GetSigmaSquared();
+  mdMeanChiSquared = b.GetMeanChiSquared();
+  mdMaxCov = b.GetMaxCov();
 }
 
 // Mapmaker's try-to-find-a-point-in-a-keyframe code. This is used to update

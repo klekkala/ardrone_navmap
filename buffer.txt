@@ -1,0 +1,8 @@
+src/stateestimation/DroneKalmanFilter.cpp
+src/stateestimation/EstimationNode.cpp
+src/stateestimation/main_stateestimation.cpp
+src/stateestimation/MapView.cpp
+src/stateestimation/Predictor.cpp
+src/stateestimation/PTAM/FabMap.cpp
+src/stateestimation/PTAM/Track_fabmap.cpp
+src/stateestimation/PTAMWrapper.cpp
