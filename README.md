@@ -1,5 +1,7 @@
 # Package tum_ardrone
 
+This package is an implementation of lsd_slam tracking and mapping instead of ptam for the original tum_ardrone. LSD SLAM is used from the original
+
 This package contains the implementation corresponding to the following publications:
 
 - [Scale-Aware Navigation of a Low-Cost Quadrocopter with a Monocular Camera](https://vision.in.tum.de/_media/spezial/bib/engel14ras.pdf) (J. Engel, J. Sturm, D. Cremers)
