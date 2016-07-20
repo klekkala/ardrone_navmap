@@ -18,12 +18,13 @@
  *  You should have received a copy of the GNU General Public License
  *  along with tum_ardrone.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __PTAMWRAPPER_H
-#define __PTAMWRAPPER_H
+#ifndef __LSDWRAPPER_H
+#define __LSDWRAPPER_H
 
 #include "GLWindow2.h"
 #include "TooN/se3.h"
 #include <deque>
+#include <chrono>
 #include "sensor_msgs/Image.h"
 #include "ardrone_autonomy/Navdata.h"
 #include "cvd/thread.h"
@@ -31,16 +32,26 @@
 #include "cvd/byte.h"
 #include "MouseKeyHandler.h"
 #include "boost/thread.hpp"
+#include "LSD-SLAM/io_wrapper/timestamp.h"
+#include "LSD-SLAM/io_wrapper/notify_buffer.h"
+#include "LSD-SLAM/io_wrapper/timestamped_object.h"
+#include "util/sophus_util.h"
 
-class Map;
-class MapMaker;
-class Tracker;
-class ATANCamera;
+
+namespace cv {
+	class Mat;
+}
+
+namespace lsd_slam
+{
+class SlamSystem;
 class Predictor;
 class DroneKalmanFilter;
 class DroneFlightModule;
 class EstimationNode;
-
+class KeyFrameGraph;
+class LiveSLAMWrapperROS;
+class Output3DWrapper;
 
 typedef TooN::Vector<3> tvec3;
 typedef TooN::SE3<> tse3;
@@ -50,11 +61,13 @@ typedef TooN::SE3<> tse3;
 // the thread re-renders old images, or (via callback) performs ROS-message handeling (i.e. tracking).
 // it then updates the DroneKalmanFilter.
 
-class PTAMWrapper : private CVD::Thread, private MouseKeyHandler
+class LSDWrapper : private CVD::Thread, private MouseKeyHandler
 {
 private:
 	// base window
 	GLWindow2* myGLWindow;
+
+	//Change this to Utils equivalent
 	CVD::ImageRef desiredWindowSize;		// size the window scould get changed to if [changeSizeNextRender]
 	CVD::ImageRef defaultWindowSize;		// size the window gets opened with
 	bool changeSizeNextRender;
@@ -69,13 +82,14 @@ private:
 	// references to filter.
 	DroneKalmanFilter* filter;
 	EstimationNode* node;
+	Output3DWrapper* outputWrapper;
 
-	// -------------------- PTAM related stuff --------------------------------
+	// -------------------- LSD Related stuff --------------------------------
 	char charBuf[1000];
 	std::string msg;
 
-	CVD::Image<CVD::byte> mimFrameBW;
-	CVD::Image<CVD::byte> mimFrameBW_workingCopy;
+	Timestamped mimFrameBW;
+	Timestamped mimFrameBW_workingCopy;
 	int mimFrameTime;
 	int mimFrameTime_workingCopy;
 	unsigned int mimFrameSEQ;
@@ -87,26 +101,29 @@ private:
 
 	// Map is in my global Coordinate system. keyframes give the front-cam-position, i.e.
 	// CFromW is "GlobalToFront". this is achieved by aligning the global coordinate systems in the very beginning.
-	Map *mpMap; 
-	MapMaker *mpMapMaker; 
-	Tracker *mpTracker; 
-	ATANCamera *mpCamera;
+	
+	LiveSLAMWrapper* lsdTracker;
 	Predictor* predConvert;			// used ONLY to convert from rpy to se3 and back, i.e. never kept in some state.
 	Predictor* predIMUOnlyForScale;	// used for scale calculation. needs to be updated with every new navinfo...
 
-	double minKFTimeDist;
-	double minKFWiggleDist;
-	double minKFDist;
+	bool isInitialized;
 
+	SlamSystem* monoOdometry;
+
+	std::string outFileName;
+	std::ofstream* outFile;
+	
+	float fx, fy, cx, cy;
+	int width, height;
+
+
+	int imageSeqNumber;
 
 	Predictor* imuOnlyPred;	
 	int lastScaleEKFtimestamp;
 	
-	bool resetPTAMRequested;
+	bool resetLSDRequested;
 	enum {UI_NONE = 0, UI_DEBUG = 1, UI_PRES = 2} drawUI;
-
-
-	bool forceKF;
 
 	bool flushMapKeypoints;
 
@@ -117,18 +134,16 @@ private:
 	int lastGoodYawClock;
 	int isGoodCount;	// number of succ. tracked frames in a row.
 
-	TooN::Vector<3> PTAMPositionForScale;
-	int ptamPositionForScaleTakenTimestamp;
+	TooN::Vector<3> LSDPositionForScale;
+	int lsdPositionForScaleTakenTimestamp;
 	int framesIncludedForScaleXYZ;
 	std::deque<ardrone_autonomy::Navdata> navInfoQueue;
 	bool navQueueOverflown;
 	TooN::Vector<3> evalNavQue(unsigned int from, unsigned int to, bool* zCorrupted, bool* allCorrupted, float* out_start_pressure, float* out_end_pressure);
 	
 
-	// keep Running
+	// keep Running; locknext frame removed
 	bool keepRunning;
-	
-	bool lockNextFrame;
 
 	boost::condition_variable  new_frame_signal;
 	boost::mutex new_frame_signal_mutex;
@@ -146,15 +161,14 @@ private:
 
 public:
 
-	PTAMWrapper(DroneKalmanFilter* dkf, EstimationNode* nde);
-	~PTAMWrapper(void);
+	LSDWrapper(DroneKalmanFilter* dkf, EstimationNode* nde);
+	~LSDWrapper(void);
 
 	// ROS exclusive: called by external thread if a new image/navdata is received.
 	// takes care of sync etc.
 	void newImage(sensor_msgs::ImageConstPtr img);
 	void newNavdata(ardrone_autonomy::Navdata* nav);
 	bool newImageAvailable;
-	void setPTAMPars(double minKFTimeDist, double minKFWiggleDist, double minKFDist);
 
 	bool handleCommand(std::string s);
 	bool mapLocked;
@@ -170,18 +184,31 @@ public:
 	//virtual void on_event(int event);
 	
 	// resets PTAM tracking
-	inline void Reset() {resetPTAMRequested = true;};
+	inline void Reset() {resetLSDRequested = true;};
 
+	/** Runs the main processing loop. Will never return. */
+	void Loop();
+
+	/** Requests a reset from a different thread. */
+	void requestReset();
+
+	/** Callback function for new RGB images. */
+	void newImageCallback(const cv::Mat& img, Timestamp imgTime);
+
+	/** Writes the given time and pose to the outFile. */
+	void logCameraPose(const SE3& camToWorld, double time);
+	
+	
+	inline SlamSystem* getSlamSystem() {return monoOdometry;}
 
 	// start and stop system and respective thread.
 	void startSystem();
 	void stopSystem();
 
+	enum {LSD_IDLE = 0, LSD_LOST = 1, LSD_GOOD = 2, LSD_TOOKKF = 3} LSDStatus;
 
-
-	enum {PTAM_IDLE = 0, PTAM_INITIALIZING = 1, PTAM_LOST = 2, PTAM_GOOD = 3, PTAM_BEST = 4, PTAM_TOOKKF = 5, PTAM_FALSEPOSITIVE = 6} PTAMStatus;
-	TooN::SE3<> lastPTAMResultRaw;
-	std::string lastPTAMMessage;
+	TooN::SE3<> lastLSDResultRaw;
+	std::string lastLSDMessage;
 
 	// for map rendering: shallow clone
 	std::vector<tvec3> mapPointsTransformed;
@@ -189,8 +216,9 @@ public:
 
 	ardrone_autonomy::Navdata lastNavinfoReceived;
 
-	int PTAMInitializedClock;
+	int LSDInitializedClock;
 
 };
 
-#endif /* __PTAMWRAPPER_H */
+#endif /* __LSDWRAPPER_H */
+}

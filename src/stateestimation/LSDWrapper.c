@@ -1,4 +1,4 @@
- /**
+/**
  *  This file is part of tum_ardrone.
  *
  *  Copyright 2012 Jakob Engel <jajuengel@gmail.com> (Technical University of Munich)
@@ -20,14 +20,9 @@
  
  
  
-#include "PTAMWrapper.h"
+#include "LSDWrapper.h"
 #include <cvd/gl_helpers.h>
 #include <gvars3/instances.h>
-#include "PTAM/ATANCamera.h"
-#include "PTAM/MapMaker.h"
-#include "PTAM/Tracker.h"
-#include "PTAM/Map.h"
-#include "PTAM/MapPoint.h"
 #include "../HelperFunctions.h"
 #include "Predictor.h"
 #include "DroneKalmanFilter.h"
@@ -38,20 +33,26 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <vector>
+#include <boost/thread.hpp>
+#include <boost/foreach.hpp>
+#include "LSD-SLAM/slam_system.h"
+#include "LSD-SLAM/io_wrapper/ROS/ROSOutput3DWrapper.h"
+#include "LSD-SLAM/io_wrapper/ROS/rosReconfigure.h"
+#include "LSD-SLAM/util/sophus_util.h"
+#include "LSD-SLAM/util/global_funcs.h"
 
-pthread_mutex_t PTAMWrapper::navInfoQueueCS = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t PTAMWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t LSDWrapper::navInfoQueueCS = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t LSDWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
 
-pthread_mutex_t PTAMWrapper::logScalePairs_CS = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t LSDWrapper::logScalePairs_CS = PTHREAD_MUTEX_INITIALIZER;
 
-PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde)
+namespace lsd_slam{
+LSDWrapper::LSDWrapper(DroneKalmanFilter* f, EstimationNode* nde, Output3DWrapper* outputWrapper)
 {
 	filter = f;
 	node = nde;
 
-	mpMap = 0; 
-	mpMapMaker = 0; 
-	mpTracker = 0; 
 	predConvert = 0;
 	predIMUOnlyForScale = 0;
 	mpCamera = 0;
@@ -68,29 +69,43 @@ PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 	drawUI = UI_PRES;
 	frameWidth = frameHeight = 0;
 
-	minKFDist = 0;
-	minKFWiggleDist = 0;
-	minKFTimeDist = 0;
-
-	maxKF = 60;
-
 	logfileScalePairs = 0;
+
+	this->outputWrapper = outputWrapper;
+
+
+	isInitialized = false;
+
+/***********************************************************relok this*/
+	std::ifstream fleH (file.c_str());
+	Sophus::Matrix3f K_sophus;
+	TooN::Vector<5> camPar;
+	fleH >> camPar[0] >> camPar[1] >> camPar[2] >> camPar[3] >> camPar[4];
+	fleH.close();
+	std::cout<< "Set Camera Paramerer to: " << camPar[0] << " " << camPar[1] << " " << camPar[2] << " " << camPar[3] << " " << camPar[4] << camPar[5] << " " << camPar[6] << " " << camPar[7] << std::endl;
+	
+	K_sophus << camPar[0], 0.0, camPar[1], 0.0, camPar[2], camPar[3], 0.0, 0.0, 1.0;
+
+	outFile = nullptr;
+	frameWidth = camPar[4];
+	frameHeight = camPar[5];
+
+	// make Odometry
+	monoOdometry = new SlamSystem(frameWidth, frameHeight, K_sophus, doSlam);
+
+	monoOdometry->setVisualization(outputWrapper);
+
+	imageSeqNumber = 0;
 }
 
-void PTAMWrapper::ResetInternal()
+
+
+void LSDWrapper::ResetInternal()
 {
-	mimFrameBW.resize(CVD::ImageRef(frameWidth, frameHeight));
-	mimFrameBW_workingCopy.resize(CVD::ImageRef(frameWidth, frameHeight));
-
-
-	if(mpMapMaker != 0) delete mpMapMaker;
-	if(mpMap != 0) delete mpMap;
-	if(mpTracker != 0) delete mpTracker;
-	if(mpCamera != 0) delete mpCamera;
 
 
 	// read camera calibration (yes, its done here)
-	std::string file = node->calibFile;
+	std::string calibFile;
 	while(node->arDroneVersion == 0)
 	{
 		std::cout << "Waiting for first navdata to determine drone version!" << std::endl;
@@ -104,72 +119,76 @@ void PTAMWrapper::ResetInternal()
 			file = node->packagePath + "/camcalib/ardrone2_default.txt";
 	}
 
+
+	outFileName = node->packagePath+"estimated_poses.txt";
+	//Specify width and height for the monoOdometry module
+
+	if(monoOdometry != nullptr)
+	{
+		delete monoOdometry;
+		printf("Deleted SlamSystem Object!\n");
+
+		K_sophus << fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0;
+		monoOdometry = new SlamSystem(frameWidth, frameWidth, K_sophus, doSlam);
+		monoOdometry->setVisualization(outputWrapper);
+
+	}
+
+	//Setting the filestream
 	std::ifstream fleH (file.c_str());
-	TooN::Vector<5> camPar;
-	fleH >> camPar[0] >> camPar[1] >> camPar[2] >> camPar[3] >> camPar[4];
+	inputStream->setCalibration(fileH);
 	fleH.close();
-	std::cout<< "Set Camera Paramerer to: " << camPar[0] << " " << camPar[1] << " " << camPar[2] << " " << camPar[3] << " " << camPar[4] << std::endl;
 
-
-
-	mpMap = new Map;
-	mpCamera = new ATANCamera(camPar);
-	mpMapMaker = new MapMaker(*mpMap, *mpCamera);
-	mpTracker = new Tracker(CVD::ImageRef(frameWidth, frameHeight), *mpCamera, *mpMap, *mpMapMaker);
-
-	setPTAMPars(minKFTimeDist, minKFWiggleDist, minKFDist);
+	inputStream->run();
+	outputWrapper = new ROSOutput3DWrapper(inputStream->width(), inputStream->height());
+	LiveSLAMWrapper lsdTracker(inputStream, outputWrapper);
 
 	predConvert->setPosRPY(0,0,0,0,0,0);
 	predIMUOnlyForScale->setPosRPY(0,0,0,0,0,0);
 
-	resetPTAMRequested = false;
-	forceKF = false;
+	resetLSDRequested = false;
 	isGoodCount = 0;
 	lastAnimSentClock = 0;
-	lockNextFrame = false;
-	PTAMInitializedClock = 0;
-	lastPTAMMessage = "";
+	LSDInitializedClock = 0;
+	lastLSDMessage = "";
 
 	flushMapKeypoints = false;
 
-	node->publishCommand("u l PTAM has been reset.");
+	node->publishCommand("u l LSD has been reset.");
+	imageSeqNumber = 0;
+	isInitialized = false;
+
+	Util::closeAllWindows();
 }
 
-void PTAMWrapper::setPTAMPars(double minKFTimeDist, double minKFWiggleDist, double minKFDist)
-{
-	if(mpMapMaker != 0)
-		mpMapMaker->minKFDist = minKFDist;
-	if(mpMapMaker != 0)
-		mpMapMaker->minKFWiggleDist = minKFWiggleDist;
-	if(mpTracker != 0)
-		mpTracker->minKFTimeDist = minKFTimeDist;
 
-	this->minKFDist = minKFDist;
-	this->minKFWiggleDist = minKFWiggleDist;
-	this->minKFTimeDist = minKFTimeDist;
-}
-
-PTAMWrapper::~PTAMWrapper(void)
+LSDWrapper::~LSDWrapper(void)
 {
-	if(mpCamera != 0) delete mpCamera;
-	if(mpMap != 0) delete mpMap;
-	if(mpMapMaker != 0) delete mpMapMaker;
-	if(mpTracker != 0) delete mpTracker;
 	if(predConvert != 0) delete predConvert;
 	if(predIMUOnlyForScale != 0) delete predIMUOnlyForScale;
 	if(imuOnlyPred != 0) delete imuOnlyPred;
 
+	if(monoOdometry != 0)
+		delete monoOdometry;
+
+	if(outFile != 0)
+	{
+		outFile->flush();
+		outFile->close();
+		delete outFile;
+	}
+
 }
 
 
-void PTAMWrapper::startSystem()
+void LSDWrapper::startSystem()
 {
 	keepRunning = true;
 	changeSizeNextRender = false;
 	start();
 }
 
-void PTAMWrapper::stopSystem()
+void LSDWrapper::stopSystem()
 {
 	keepRunning = false;
 	new_frame_signal.notify_all();
@@ -177,7 +196,7 @@ void PTAMWrapper::stopSystem()
 }
 
 
-void PTAMWrapper::run()
+void LSDWrapper::run()
 {
 	std::cout << "Waiting for Video" << std::endl;
 
@@ -188,9 +207,9 @@ void PTAMWrapper::run()
 	while(!newImageAvailable)
 		usleep(100000);	// sleep 100ms
 
-	// read image height and width
-	frameWidth = mimFrameBW.size().x;
-	frameHeight = mimFrameBW.size().y;
+	// read image height and width**temporarily*** 
+	frameWidth = 640;
+	frameHeight = 480;
 
 	ResetInternal();
 
@@ -200,15 +219,10 @@ void PTAMWrapper::run()
 	node->publishCommand(std::string("u l ")+charBuf);
 
 	// create window
-    myGLWindow = new GLWindow2(CVD::ImageRef(frameWidth,frameHeight), "PTAM Drone Camera Feed", this);
-	myGLWindow->set_title("PTAM Drone Camera Feed");
+	Util::displayImage("LSD SLAM Drone Camera Feed", image.data);
 
+	// Framewidth size removed
 	changeSizeNextRender = true;
-	if(frameWidth < 640)
-		desiredWindowSize = CVD::ImageRef(frameWidth*2,frameHeight*2);
-	else
-		desiredWindowSize = CVD::ImageRef(frameWidth,frameHeight);
-
 
 	boost::unique_lock<boost::mutex> lock(new_frame_signal_mutex);
 
@@ -218,11 +232,7 @@ void PTAMWrapper::run()
 		{
 			newImageAvailable = false;
 
-			// copy to working copy
 			mimFrameBW_workingCopy.copy_from(mimFrameBW);
-			mimFrameTime_workingCopy = mimFrameTime;
-			mimFrameSEQ_workingCopy = mimFrameSEQ;
-			mimFrameTimeRos_workingCopy = mimFrameTimeRos;
 
 			// release lock and do the work-intensive stuff.....
 			lock.unlock();
@@ -247,12 +257,14 @@ void PTAMWrapper::run()
 	delete myGLWindow;
 }
 
+
+
 // called every time a new frame is available.
 // needs to be able to 
 // - (finally) roll forward filter
 // - query it's state 
 // - add a PTAM observation to filter.
-void PTAMWrapper::HandleFrame()
+void LSDWrapper::HandleFrame()
 {
 	//printf("tracking Frame at ms=%d (from %d)\n",getMS(ros::Time::now()),mimFrameTime-filter->delayVideo);
 
@@ -262,15 +274,16 @@ void PTAMWrapper::HandleFrame()
 	ros::Time startedFunc = ros::Time::now();
 
 	// reset?
-	if(resetPTAMRequested)
+	if(resetLSDRequested)
 		ResetInternal();
+
 
 
 	// make filter thread-safe.
 	// --------------------------- ROLL FORWARD TIL FRAME. This is ONLY done here. ---------------------------
 	pthread_mutex_lock( &filter->filter_CS );
 	//filter->predictUpTo(mimFrameTime,true, true);
-	TooN::Vector<10> filterPosePrePTAM = filter->getPoseAtAsVec(mimFrameTime_workingCopy-filter->delayVideo,true);
+	TooN::Vector<10> filterPosePreLSD = filter->getPoseAtAsVec(mimFrameTime_workingCopy-filter->delayVideo,true);
 	pthread_mutex_unlock( &filter->filter_CS );
 
 	// ------------------------ do PTAM -------------------------
@@ -281,94 +294,66 @@ void PTAMWrapper::HandleFrame()
 
 
 	// 1. transform with filter
-	TooN::Vector<6> PTAMPoseGuess = filter->backTransformPTAMObservation(filterPosePrePTAM.slice<0,6>());
+	TooN::Vector<6> LSDPoseGuess = filter->backTransformLSDObservation(filterPosePreLSD.slice<0,6>());
 	// 2. convert to se3
-	predConvert->setPosRPY(PTAMPoseGuess[0], PTAMPoseGuess[1], PTAMPoseGuess[2], PTAMPoseGuess[3], PTAMPoseGuess[4], PTAMPoseGuess[5]);
+	predConvert->setPosRPY(LSDPoseGuess[0], LSDPoseGuess[1], LSDPoseGuess[2], LSDPoseGuess[3], LSDPoseGuess[4], LSDPoseGuess[5]);
 	// 3. multiply with rotation matrix	
-	TooN::SE3<> PTAMPoseGuessSE3 = predConvert->droneToFrontNT * predConvert->globaltoDrone;
+	TooN::SE3<> LSDPoseGuessSE3 = predConvert->droneToFrontNT * predConvert->globaltoDrone;
 
 
-	// set
-	mpTracker->setPredictedCamFromW(PTAMPoseGuessSE3);
-	//mpTracker->setLastFrameLost((isGoodCount < -10), (videoFrameID%2 != 0));
-	mpTracker->setLastFrameLost((isGoodCount < -20), (mimFrameSEQ_workingCopy%3 == 0));
+	boost::unique_lock<boost::recursive_mutex> waitLock(imageStream->getBuffer()->getMutex());
+		while (!fullResetRequested && !(imageStream->getBuffer()->size() > 0)) {
+			notifyCondition.wait(waitLock);
+		}
+		waitLock.unlock();
+		
+	
+	// Track image and get current pose estimate
+	/***Note: image is of type imagedata from lsd-slam change it***/
+	TooN::SE3<> LSDResultSE3;
+	newImageCallback(mimFrameBW_workingCopy.data, mimFrameBW_workingCopy.timestamp);
 
-	// track
-	ros::Time startedPTAM = ros::Time::now();
-	mpTracker->TrackFrame(mimFrameBW_workingCopy, true);
-	TooN::SE3<> PTAMResultSE3 = mpTracker->GetCurrentPose();
-	lastPTAMMessage = msg = mpTracker->GetMessageForUser();
-	ros::Duration timePTAM= ros::Time::now() - startedPTAM;
+	LSDResultSE3 = monoOdometry->getCurrentPoseEstimate();
+	
+	ros::Duration timeLSD= ros::Time::now() - startedLSD;
 
-	TooN::Vector<6> PTAMResultSE3TwistOrg = PTAMResultSE3.ln();
+	TooN::Vector<6> LSDResultSE3TwistOrg = LSDResultSE3.ln();
 
-	node->publishTf(mpTracker->GetCurrentPose(),mimFrameTimeRos_workingCopy, mimFrameSEQ_workingCopy,"cam_front");
+	node->publishTf(LSDResultSE3, mimFrameTimeRos_workingCopy, mimFrameSEQ_workingCopy,"cam_front");
 
 
 	// 1. multiply from left by frontToDroneNT.
 	// 2. convert to xyz,rpy
-	predConvert->setPosSE3_globalToDrone(predConvert->frontToDroneNT * PTAMResultSE3);
-	TooN::Vector<6> PTAMResult = TooN::makeVector(predConvert->x, predConvert->y, predConvert->z, predConvert->roll, predConvert->pitch, predConvert->yaw);
+	predConvert->setPosSE3_globalToDrone(predConvert->frontToDroneNT * LSDResultSE3);
+	TooN::Vector<6> LSDResult = TooN::makeVector(predConvert->x, predConvert->y, predConvert->z, predConvert->roll, predConvert->pitch, predConvert->yaw);
 
 	// 3. transform with filter
-	TooN::Vector<6> PTAMResultTransformed = filter->transformPTAMObservation(PTAMResult);
+	TooN::Vector<6> LSDResultTransformed = filter->transformLSDObservation(LSDResult);
 
-
-
-
-	// init failed?
-	if(mpTracker->lastStepResult == mpTracker->I_FAILED)
-	{
-		ROS_INFO("initializing PTAM failed, resetting!");
-		resetPTAMRequested = true;
-	}
-	if(mpTracker->lastStepResult == mpTracker->I_SECOND)
-	{
-		PTAMInitializedClock = getMS();
-		filter->setCurrentScales(TooN::makeVector(mpMapMaker->initialScaleFactor*1.2,mpMapMaker->initialScaleFactor*1.2,mpMapMaker->initialScaleFactor*1.2));
-		mpMapMaker->currentScaleFactor = filter->getCurrentScales()[0];
-		ROS_INFO("PTAM initialized!");
-		ROS_INFO("initial scale: %f\n",mpMapMaker->initialScaleFactor*1.2);
-		node->publishCommand("u l PTAM initialized (took second KF)");
-		framesIncludedForScaleXYZ = -1;
-		lockNextFrame = true;
-		imuOnlyPred->resetPos();
-	}
-	if(mpTracker->lastStepResult == mpTracker->I_FIRST)
-	{
-		node->publishCommand("u l PTAM initialization started (took first KF)");
-	}
-
-
-
+	//Init failed code removed
 
 
 
 	// --------------------------- assess result ------------------------------
 	bool isGood = true;
-	bool isVeryGood = true;
+	bool diverged = false;
+	
 	// calculate absolute differences.
-	TooN::Vector<6> diffs = PTAMResultTransformed - filterPosePrePTAM.slice<0,6>();
+	TooN::Vector<6> diffs = LSDResultTransformed - filterPosePreLSD.slice<0,6>();
 	for(int i=0;1<1;i++) diffs[i] = abs(diffs[i]);
 
-
-	if(filter->getNumGoodPTAMObservations() < 10 && mpMap->IsGood())
+	if(filter->getNumGoodLSDObservations() < 10 && monoOdometry->IsGood())
 	{
 		isGood = true;
-		isVeryGood = false;
 	}
-	else if(mpTracker->lastStepResult == mpTracker->I_FIRST ||
-		mpTracker->lastStepResult == mpTracker->I_SECOND || 
-		mpTracker->lastStepResult == mpTracker->I_FAILED ||
-		mpTracker->lastStepResult == mpTracker->T_LOST ||
-		mpTracker->lastStepResult == mpTracker->NOT_TRACKING ||
-		mpTracker->lastStepResult == mpTracker->INITIALIZING)
-		isGood = isVeryGood = false;
+
+	//If the last tracking step result is lost
+	else if(lsdTracker->lastStepResult == LOST)
+		isGood = false;
+		diverged = true;
+
 	else
 	{
-		// some chewy heuristic when to add and when not to.
-		bool dodgy = mpTracker->lastStepResult == mpTracker->T_DODGY ||
-			mpTracker->lastStepResult == mpTracker->T_RECOVERED_DODGY;
 
 		// if yaw difference too big: something certainly is wrong.
 		// maximum difference is 5 + 2*(number of seconds since PTAM observation).
@@ -381,14 +366,14 @@ void PTAMWrapper::HandleFrame()
 			lastGoodYawClock = getMS();
 
 		if(diffs[5] > 4.0) 
-			isVeryGood = false;
+			isGood = false;
 
 		// if rp difference too big: something certainly is wrong.
 		if(diffs[3] > 20 || diffs[4] > 20)
 			isGood = false;
 
 		if(diffs[3] > 3 || diffs[4] > 3 || dodgy)
-			isVeryGood = false;
+			isGood = false;
 	}
 
 	if(isGood)
@@ -408,7 +393,11 @@ void PTAMWrapper::HandleFrame()
 
 	}
 
-	TooN::Vector<10> filterPosePostPTAM;
+
+
+
+
+	TooN::Vector<10> filterPosePostLSD;
 	// --------------------------- scale estimation & update filter (REDONE) -----------------------------
 	// interval length is always between 1s and 2s, to enshure approx. same variances.
 	// if interval contained height inconsistency, z-distances are simply both set to zero, which does not generate a bias.
@@ -421,21 +410,21 @@ void PTAMWrapper::HandleFrame()
 
 	// TODO: make shure filter is handled properly with permanent roll-forwards.
 	pthread_mutex_lock( &filter->filter_CS );
-	if(filter->usePTAM && isGoodCount >= 3)
+	if(filter->useLSD)
 	{
-		filter->addPTAMObservation(PTAMResult,mimFrameTime_workingCopy-filter->delayVideo);
+		filter->addLSDObservation(LSDResult,mimFrameTime_workingCopy-filter->delayVideo);
 	}
 	else
-		filter->addFakePTAMObservation(mimFrameTime_workingCopy-filter->delayVideo);
+		filter->addFakeLSDObservation(mimFrameTime_workingCopy-filter->delayVideo);
 
-	filterPosePostPTAM = filter->getCurrentPoseSpeedAsVec();
+	filterPosePostLSD = filter->getCurrentPoseSpeedAsVec();
 	pthread_mutex_unlock( &filter->filter_CS );
 
-	TooN::Vector<6> filterPosePostPTAMBackTransformed = filter->backTransformPTAMObservation(filterPosePostPTAM.slice<0,6>());
+	TooN::Vector<6> filterPosePostLSDBackTransformed = filter->backTransformLSDObservation(filterPosePostLSD.slice<0,6>());
 
 
 	// if interval is started: add one step.
-	int includedTime = mimFrameTime_workingCopy - ptamPositionForScaleTakenTimestamp;
+	int includedTime = mimFrameTime_workingCopy - lsdPositionForScaleTakenTimestamp;
 	if(framesIncludedForScaleXYZ >= 0) framesIncludedForScaleXYZ++;
 
 	// if interval is overdue: reset & dont add
@@ -451,10 +440,10 @@ void PTAMWrapper::HandleFrame()
 
 		if(includedTime >= 2000 && framesIncludedForScaleXYZ > 1)	// ADD! (if too many, was resetted before...)
 		{
-			TooN::Vector<3> diffPTAM = filterPosePostPTAMBackTransformed.slice<0,3>() - PTAMPositionForScale;
+			TooN::Vector<3> diffLSD = filterPosePostLSDBackTransformed.slice<0,3>() - LSDPositionForScale;
 			bool zCorrupted, allCorrupted;
 			float pressureStart = 0, pressureEnd = 0;
-			TooN::Vector<3> diffIMU = evalNavQue(ptamPositionForScaleTakenTimestamp - filter->delayVideo + filter->delayXYZ,mimFrameTime_workingCopy - filter->delayVideo + filter->delayXYZ,&zCorrupted, &allCorrupted, &pressureStart, &pressureEnd);
+			TooN::Vector<3> diffIMU = evalNavQue(lsdPositionForScaleTakenTimestamp - filter->delayVideo + filter->delayXYZ,mimFrameTime_workingCopy - filter->delayVideo + filter->delayXYZ,&zCorrupted, &allCorrupted, &pressureStart, &pressureEnd);
 
 			pthread_mutex_lock(&logScalePairs_CS);
 			if(logfileScalePairs != 0)
@@ -462,7 +451,7 @@ void PTAMWrapper::HandleFrame()
 						pressureStart << " " <<
 						pressureEnd << " " <<
 						diffIMU[2] << " " <<
-						diffPTAM[2] << std::endl;
+						diffLSD[2] << std::endl;
 			pthread_mutex_unlock(&logScalePairs_CS);
 
 
@@ -472,11 +461,12 @@ void PTAMWrapper::HandleFrame()
 				double xyFactor = 0.05;
 				double zFactor = zCorrupted ? 0 : 3;
 			
-				diffPTAM.slice<0,2>() *= xyFactor; diffPTAM[2] *= zFactor;
+				diffLSD.slice<0,2>() *= xyFactor; diffLSD[2] *= zFactor;
 				diffIMU.slice<0,2>() *= xyFactor; diffIMU[2] *= zFactor;
 
-				filter->updateScaleXYZ(diffPTAM, diffIMU, PTAMResult.slice<0,3>());
-				mpMapMaker->currentScaleFactor = filter->getCurrentScales()[0];
+				filter->updateScaleXYZ(diffLSD, diffIMU, LSDResult.slice<0,3>());
+				//currentkeyframe scale set here.
+				currentKeyFrame->getScaledCamToWorld().scale() = filter->getCurrentScales()[0];
 			}
 			framesIncludedForScaleXYZ = -1;	// causing reset afterwards
 		}
@@ -484,59 +474,25 @@ void PTAMWrapper::HandleFrame()
 		if(framesIncludedForScaleXYZ == -1)	// RESET!
 		{
 			framesIncludedForScaleXYZ = 0;
-			PTAMPositionForScale = filterPosePostPTAMBackTransformed.slice<0,3>();
+			LSDPositionForScale = filterPosePostLSDBackTransformed.slice<0,3>();
 			//predIMUOnlyForScale->resetPos();	// also resetting z corrupted flag etc. (NOT REquired as reset is done in eval)
-			ptamPositionForScaleTakenTimestamp = mimFrameTime_workingCopy;
+			lsdPositionForScaleTakenTimestamp = mimFrameTime_workingCopy;
 		}
 	}
 	
+	//Map locking removed
 
-	if(lockNextFrame && isGood)
-	{
-		filter->scalingFixpoint = PTAMResult.slice<0,3>();
-		lockNextFrame = false;	
-		//filter->useScalingFixpoint = true;
-
-		snprintf(charBuf,500,"locking scale fixpoint to %.3f %.3f %.3f",PTAMResultTransformed[0], PTAMResultTransformed[1], PTAMResultTransformed[2]);
-		ROS_INFO(charBuf);
-		node->publishCommand(std::string("u l ")+charBuf);
-	}
-
-
-	// ----------------------------- Take KF? -----------------------------------
-	if(!mapLocked && isVeryGood && (forceKF || mpMap->vpKeyFrames.size() < maxKF || maxKF <= 1))
-	{
-		mpTracker->TakeKF(forceKF);
-		forceKF = false;
-	}
-
-	// ---------------- save PTAM status for KI --------------------------------
-	if(mpTracker->lastStepResult == mpTracker->NOT_TRACKING)
-		PTAMStatus = PTAM_IDLE;
-	else if(mpTracker->lastStepResult == mpTracker->I_FIRST ||
-		mpTracker->lastStepResult == mpTracker->I_SECOND ||
-		mpTracker->lastStepResult == mpTracker->T_TOOK_KF)
-		PTAMStatus = PTAM_TOOKKF;
-	else if(mpTracker->lastStepResult == mpTracker->INITIALIZING)
-		PTAMStatus = PTAM_INITIALIZING;
-	else if(isVeryGood)
-		PTAMStatus = PTAM_BEST;
-	else if(isGood)
-		PTAMStatus = PTAM_GOOD;
-	else if(mpTracker->lastStepResult == mpTracker->T_DODGY ||
-		mpTracker->lastStepResult == mpTracker->T_GOOD)
-		PTAMStatus = PTAM_FALSEPOSITIVE;
-	else
-		PTAMStatus = PTAM_LOST;
 
 	 
-	// ----------------------------- update shallow map --------------------------
-	if(!mapLocked && rand()%5==0)
+	// ----------------------------- update shallow map for LSD SLAM-----------------
+	//Map locking removed
+	if(rand()%5==0)
 	{
 		pthread_mutex_lock(&shallowMapCS);
+		// Should convert both of them to LSD
 		mapPointsTransformed.clear();
 		keyFramesTransformed.clear();
-		for(unsigned int i=0;i<mpMap->vpKeyFrames.size();i++)
+		for(unsigned int i=0;i<keyFrameGraph->allFramePoses.size();i++)
 		{
 			predConvert->setPosSE3_globalToDrone(predConvert->frontToDroneNT * mpMap->vpKeyFrames[i]->se3CfromW);
 			TooN::Vector<6> CamPos = TooN::makeVector(predConvert->x, predConvert->y, predConvert->z, predConvert->roll, predConvert->pitch, predConvert->yaw);
@@ -544,56 +500,48 @@ void PTAMWrapper::HandleFrame()
 			predConvert->setPosRPY(CamPos[0], CamPos[1], CamPos[2], CamPos[3], CamPos[4], CamPos[5]);
 			keyFramesTransformed.push_back(predConvert->droneToGlobal);
 		}
-		TooN::Vector<3> PTAMScales = filter->getCurrentScales();
-		TooN::Vector<3> PTAMOffsets = filter->getCurrentOffsets().slice<0,3>();
-		for(unsigned int i=0;i<mpMap->vpPoints.size();i++)
+		TooN::Vector<3> LSDScales = filter->getCurrentScales();
+		TooN::Vector<3> LSDOffsets = filter->getCurrentOffsets().slice<0,3>();
+		//Converting the local points by LSD to the world perspective by multiplying by the scaleng
+		//A little confusion b/w using keyframegraph or currentkeyframe
+		for(unsigned int i=0;i<keyFrameGraph->numPoints;i++)
 		{
 			TooN::Vector<3> pos = (mpMap->vpPoints)[i]->v3WorldPos;
-			pos[0] *= PTAMScales[0];
-			pos[1] *= PTAMScales[1];
-			pos[2] *= PTAMScales[2];
+			pos[0] *= LSDScales[0];
+			pos[1] *= LSDScales[1];
+			pos[2] *= LSDScales[2];
 			pos += PTAMOffsets;
 			mapPointsTransformed.push_back(pos);
 		}
-
 		// flush map keypoints
 		if(flushMapKeypoints)
 		{
 			std::ofstream* fle = new std::ofstream();
 			fle->open("pointcloud.txt");
-
 			for(unsigned int i=0;i<mapPointsTransformed.size();i++)
 			{
 				(*fle) << mapPointsTransformed[i][0] << " "
 					   << mapPointsTransformed[i][1] << " "
 					   << mapPointsTransformed[i][2] << std::endl;
 			}
-
 			fle->flush();
 			fle->close();
-
 			printf("FLUSHED %d KEYPOINTS to file pointcloud.txt\n\n",mapPointsTransformed.size());
-
 			flushMapKeypoints = false;
 		}
-
-
 		pthread_mutex_unlock(&shallowMapCS);
-
 	}
-
-
+*/
 
 	// ---------------------- output and render! ---------------------------
 	ros::Duration timeALL = ros::Time::now() - startedFunc;
-	if(isVeryGood) snprintf(charBuf,1000,"\nQuality: best            ");
 	else if(isGood) snprintf(charBuf,1000,"\nQuality: good           ");
 	else snprintf(charBuf,1000,"\nQuality: lost                       ");
 	
 	snprintf(charBuf+20,800, "scale: %.3f (acc: %.3f)                            ",filter->getCurrentScales()[0],(double)filter->getScaleAccuracy());
-	snprintf(charBuf+50,800, "PTAM time: %i ms                            ",(int)(1000*timeALL.toSec()));
+	snprintf(charBuf+50,800, "LSD time: %i ms                            ",(int)(1000*timeALL.toSec()));
 	snprintf(charBuf+68,800, "(%i ms total)  ",(int)(1000*timeALL.toSec()));
-	if(mapLocked) snprintf(charBuf+83,800, "m.l. ");
+	if() snprintf(charBuf+83,800, "m.l. ");
 	else snprintf(charBuf+83,800, "     ");
 	if(filter->allSyncLocked) snprintf(charBuf+88,800, "s.l. ");
 	else snprintf(charBuf+88,800, "     ");
@@ -601,11 +549,11 @@ void PTAMWrapper::HandleFrame()
 
 	msg += charBuf;
 
-	if(mpMap->IsGood())
+	if()
 	{
 		if(drawUI == UI_DEBUG)
 		{
-			snprintf(charBuf,1000,"\nPTAM Diffs:              ");
+			snprintf(charBuf,1000,"\nLSD Diffs:              ");
 			snprintf(charBuf+13,800, "x: %.3f                          ",diffs[0]);
 			snprintf(charBuf+23,800, "y: %.3f                          ",diffs[1]);
 			snprintf(charBuf+33,800, "z: %.3f                          ",diffs[2]);
@@ -615,27 +563,22 @@ void PTAMWrapper::HandleFrame()
 			msg += charBuf;
 
 
-			snprintf(charBuf,1000,"\nPTAM Pose:              ");
-			snprintf(charBuf+13,800, "x: %.3f                          ",PTAMResultTransformed[0]);
-			snprintf(charBuf+23,800, "y: %.3f                          ",PTAMResultTransformed[1]);
-			snprintf(charBuf+33,800, "z: %.3f                          ",PTAMResultTransformed[2]);
-			snprintf(charBuf+43,800, "r: %.2f                          ",PTAMResultTransformed[3]);
-			snprintf(charBuf+53,800, "p: %.2f                          ",PTAMResultTransformed[4]);
-			snprintf(charBuf+63,800, "y: %.2f",PTAMResultTransformed[5]);
+			snprintf(charBuf,1000,"\nLSD Pose:              ");
+			snprintf(charBuf+13,800, "x: %.3f                          ",LSDResultTransformed[0]);
+			snprintf(charBuf+23,800, "y: %.3f                          ",LSDResultTransformed[1]);
+			snprintf(charBuf+33,800, "z: %.3f                          ",LSDResultTransformed[2]);
+			snprintf(charBuf+43,800, "r: %.2f                          ",LSDResultTransformed[3]);
+			snprintf(charBuf+53,800, "p: %.2f                          ",LSDResultTransformed[4]);
+			snprintf(charBuf+63,800, "y: %.2f",LSDResultTransformed[5]);
 			msg += charBuf;
 
-
-			snprintf(charBuf,1000,"\nPTAM WiggleDist:              ");
-			snprintf(charBuf+18,800, "%.3f                          ",mpMapMaker->lastWiggleDist);
-			snprintf(charBuf+24,800, "MetricDist: %.3f",mpMapMaker->lastMetricDist);
-			msg += charBuf;
 		}
 	}
 
 	if(drawUI != UI_NONE)
 	{
 		// render grid
-		predConvert->setPosRPY(filterPosePostPTAM[0], filterPosePostPTAM[1], filterPosePostPTAM[2], filterPosePostPTAM[3], filterPosePostPTAM[4], filterPosePostPTAM[5]);
+		predConvert->setPosRPY(filterPosePostLSD[0], filterPosePostLSD[1], filterPosePostLSD[2], filterPosePostLSD[3], filterPosePostLSD[4], filterPosePostLSD[5]);
 
 		//renderGrid(predConvert->droneToFrontNT * predConvert->globaltoDrone);
 		//renderGrid(PTAMResultSE3);
@@ -676,33 +619,20 @@ void PTAMWrapper::HandleFrame()
 		myGLWindow->DrawCaption(msg);
 	}
 
-	lastPTAMResultRaw = PTAMResultSE3; 
+	lastLSDResultRaw = LSDResultSE3; 
 	// ------------------------ LOG --------------------------------------
 	// log!
-	if(node->logfilePTAM != NULL)
+	if(node->logfileLSD != NULL)
 	{
 		TooN::Vector<3> scales = filter->getCurrentScalesForLog();
 		TooN::Vector<3> sums = TooN::makeVector(0,0,0);
 		TooN::Vector<6> offsets = filter->getCurrentOffsets();
-		pthread_mutex_lock(&(node->logPTAM_CS));
-		// log:
-		// - filterPosePrePTAM estimated for videoFrameTimestamp-delayVideo.
-		// - PTAMResulttransformed estimated for videoFrameTimestamp-delayVideo. (using imu only for last step)
-		// - predictedPoseSpeed estimated for lastNfoTimestamp+filter->delayControl	(actually predicting)
-		// - predictedPoseSpeedATLASTNFO estimated for lastNfoTimestamp	(using imu only)
-		if(node->logfilePTAM != NULL)
-			(*(node->logfilePTAM)) << (isGood ? (isVeryGood ? 2 : 1) : 0) << " " <<
-				(mimFrameTime_workingCopy-filter->delayVideo) << " " << filterPosePrePTAM[0] << " " << filterPosePrePTAM[1] << " " << filterPosePrePTAM[2] << " " << filterPosePrePTAM[3] << " " << filterPosePrePTAM[4] << " " << filterPosePrePTAM[5] << " " << filterPosePrePTAM[6] << " " << filterPosePrePTAM[7] << " " << filterPosePrePTAM[8] << " " << filterPosePrePTAM[9] << " " <<
-				filterPosePostPTAM[0] << " " << filterPosePostPTAM[1] << " " << filterPosePostPTAM[2] << " " << filterPosePostPTAM[3] << " " << filterPosePostPTAM[4] << " " << filterPosePostPTAM[5] << " " << filterPosePostPTAM[6] << " " << filterPosePostPTAM[7] << " " << filterPosePostPTAM[8] << " " << filterPosePostPTAM[9] << " " << 
-				PTAMResultTransformed[0] << " " << PTAMResultTransformed[1] << " " << PTAMResultTransformed[2] << " " << PTAMResultTransformed[3] << " " << PTAMResultTransformed[4] << " " << PTAMResultTransformed[5] << " " << 
-				scales[0] << " " << scales[1] << " " << scales[2] << " " << 
-				offsets[0] << " " << offsets[1] << " " << offsets[2] << " " << offsets[3] << " " << offsets[4] << " " << offsets[5] << " " <<
-				sums[0] << " " << sums[1] << " " << sums[2] << " " << 
-				PTAMResult[0] << " " << PTAMResult[1] << " " << PTAMResult[2] << " " << PTAMResult[3] << " " << PTAMResult[4] << " " << PTAMResult[5] << " " <<
-				PTAMResultSE3TwistOrg[0] << " " << PTAMResultSE3TwistOrg[1] << " " << PTAMResultSE3TwistOrg[2] << " " << PTAMResultSE3TwistOrg[3] << " " << PTAMResultSE3TwistOrg[4] << " " << PTAMResultSE3TwistOrg[5] << " " <<
-				videoFramePing << " " << mimFrameTimeRos_workingCopy << " " << mimFrameSEQ_workingCopy << std::endl;
+		pthread_mutex_lock(&(node->logLSD_CS));
+		
+		//****Look at this.... time may not be proper**/
+		logCameraPose(camToWorld, time);
 
-		pthread_mutex_unlock(&(node->logPTAM_CS));
+		pthread_mutex_unlock(&(node->logLSD_CS));
 	}
 
 	myGLWindow->swap_buffers();
@@ -711,8 +641,70 @@ void PTAMWrapper::HandleFrame()
 }
 
 
+
+
+void LSDWrapper::newImageCallback(const cv::Mat& img, Timestamp imgTime)
+{
+
+	TooN::SE3<> LSDResultSE3;
+	++ imageSeqNumber;
+
+	// Convert image to grayscale, if necessary
+	cv::Mat grayImg;
+	if (img.channels() == 1)
+		grayImg = img;
+	else
+		cvtColor(img, grayImg, CV_RGB2GRAY);
+	
+
+	// Assert that we work with 8 bit images
+	assert(grayImg.elemSize() == 1);
+	assert(fx != 0 || fy != 0);
+
+
+	// need to initialize
+	if(!isInitialized)
+	{
+		monoOdometry->randomInit(grayImg.data, imgTime.toSec(), 1);
+		isInitialized = true;
+	}
+	else if(isInitialized && monoOdometry != nullptr)
+	{
+		monoOdometry->trackFrame(grayImg.data,imageSeqNumber,false,imgTime.toSec());
+	}
+
+}
+
+
+void LSDWrapper::logCameraPose(const SE3& camToWorld, double time)
+{
+	Sophus::Quaternionf quat = camToWorld.unit_quaternion().cast<float>();
+	Eigen::Vector3f trans = camToWorld.translation().cast<float>();
+
+	char buffer[1000];
+	int num = snprintf(buffer, 1000, "%f %f %f %f %f %f %f %f\n",
+			time,
+			trans[0],
+			trans[1],
+			trans[2],
+			quat.x(),
+			quat.y(),
+			quat.z(),
+			quat.w());
+
+	if(outFile == 0)
+		outFile = new std::ofstream(outFileName.c_str());
+	outFile->write(buffer,num);
+	outFile->flush();
+}
+
+
+
+
+/************************************************************************/
+
 // Draw the reference grid to give the user an idea of wether tracking is OK or not.
-void PTAMWrapper::renderGrid(TooN::SE3<> camFromWorld)
+void LSDWrapper::renderGrid(TooN::SE3<> camFromWorld)
 {
 	myGLWindow->SetupViewport();
 	myGLWindow->SetupVideoOrtho();
@@ -767,7 +759,7 @@ void PTAMWrapper::renderGrid(TooN::SE3<> camFromWorld)
 
 }
 
-TooN::Vector<3> PTAMWrapper::evalNavQue(unsigned int from, unsigned int to, bool* zCorrupted, bool* allCorrupted, float* out_start_pressure, float* out_end_pressure)
+TooN::Vector<3> LSDWrapper::evalNavQue(unsigned int from, unsigned int to, bool* zCorrupted, bool* allCorrupted, float* out_start_pressure, float* out_end_pressure)
 {
 	predIMUOnlyForScale->resetPos();
 
@@ -864,18 +856,22 @@ TooN::Vector<3> PTAMWrapper::evalNavQue(unsigned int from, unsigned int to, bool
 	return TooN::makeVector(predIMUOnlyForScale->x,predIMUOnlyForScale->y,predIMUOnlyForScale->z);
 }
 
-void PTAMWrapper::newNavdata(ardrone_autonomy::Navdata* nav)
+
+
+//Input function to takein the navdata from ardrone driver
+
+void LSDWrapper::newNavdata(ardrone_autonomy::Navdata* nav)
 {
 	lastNavinfoReceived = *nav;
 
 	if(getMS(lastNavinfoReceived.header.stamp) > 2000000)
 	{
-		printf("PTAMSystem: ignoring navdata package with timestamp %f\n", lastNavinfoReceived.tm);
+		printf("LSDSystem: ignoring navdata package with timestamp %f\n", lastNavinfoReceived.tm);
 		return;
 	}
 	if(lastNavinfoReceived.header.seq > 2000000 || lastNavinfoReceived.header.seq < 0)
 	{
-		printf("PTAMSystem: ignoring navdata package with ID %i\n", lastNavinfoReceived.header.seq);
+		printf("LSDSystem: ignoring navdata package with ID %i\n", lastNavinfoReceived.header.seq);
 		return;
 	}
 
@@ -900,7 +896,9 @@ void PTAMWrapper::newNavdata(ardrone_autonomy::Navdata* nav)
 	imuOnlyPred->predictOneStep(&lastNavinfoReceived);
 }
 
-void PTAMWrapper::newImage(sensor_msgs::ImageConstPtr img)
+
+//newImage modified for the lsd integration
+void LSDWrapper::newImage(sensor_msgs::ImageConstPtr img)
 {
 
 	// convert to CVImage
@@ -919,13 +917,9 @@ void PTAMWrapper::newImage(sensor_msgs::ImageConstPtr img)
 
 	//mimFrameTime = getMS(img->header.stamp);
 	mimFrameSEQ = img->header.seq;
+	mimFrameBW.data = cv->image;
+	mimFrameBW.timestamp = Timestamp(img->header.stamp.toSec());
 
-	// copy to mimFrame.
-	// TODO: make this threadsafe (save pointer only and copy in HandleFrame)
-	if(mimFrameBW.size().x != img->width || mimFrameBW.size().y != img->height)
-		mimFrameBW.resize(CVD::ImageRef(img->width, img->height));
-
-	memcpy(mimFrameBW.data(),cv_ptr->image.data,img->width * img->height);
 	newImageAvailable = true;
 
 	lock.unlock();
@@ -934,7 +928,8 @@ void PTAMWrapper::newImage(sensor_msgs::ImageConstPtr img)
 
 
 
-void PTAMWrapper::on_key_down(int key)
+
+void LSDWrapper::on_key_down(int key)
 {
 	if(key == 114) // r
 	{
@@ -996,8 +991,11 @@ void PTAMWrapper::on_key_down(int key)
 }
 
 
+// Handle commands should be completely changed for LSD but of a low priority
+
 // reached by typing "df p COMMAND" into console
-bool PTAMWrapper::handleCommand(std::string s)
+
+bool LSDWrapper::handleCommand(std::string s)
 {
 	if(s.length() == 5 && s.substr(0,5) == "space")
 	{
@@ -1030,22 +1028,6 @@ bool PTAMWrapper::handleCommand(std::string s)
 		lockNextFrame = true;
 	}
 
-	if(s.length() == 13 && s.substr(0,13) == "toggleLockMap")
-	{
-		mapLocked = !mapLocked;
-
-
-		if(mapLocked)
-		{
-			node->publishCommand("u l PTAM map locked.");
-			printf("\n\nMAP LOCKED!\n\n\n");
-		}
-		else
-		{
-			printf("\n\nMAP UNLOCKED!\n\n\n");
-			node->publishCommand("u l PTAM map UNlocked.");
-		}
-	}
 
 	if(s.length() == 14 && s.substr(0,14) == "toggleLockSync")
 	{
@@ -1067,7 +1049,7 @@ bool PTAMWrapper::handleCommand(std::string s)
 	return true;
 }
 
-void PTAMWrapper::on_mouse_down(CVD::ImageRef where, int state, int button)
+void LSDWrapper::on_mouse_down(CVD::ImageRef where, int state, int button)
 {
 	double x = 4*(where.x/(double)this->myGLWindow->size().x - 0.5);
 	double y = -4*(where.y/(double)this->myGLWindow->size().y - 0.5);
@@ -1083,4 +1065,5 @@ void PTAMWrapper::on_mouse_down(CVD::ImageRef where, int state, int button)
 		snprintf(bf,100,"c moveByRel 0 0 %.3f %.3f",y,x*45);
 
 	node->publishCommand(bf);
+}
 }
