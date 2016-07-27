@@ -23,11 +23,7 @@
 #include "PTAMWrapper.h"
 #include <cvd/gl_helpers.h>
 #include <gvars3/instances.h>
-#include "PTAM/ATANCamera.h"
-#include "PTAM/MapMaker.h"
-#include "PTAM/Tracker.h"
-#include "PTAM/Map.h"
-#include "PTAM/MapPoint.h"
+#include "ORB_SLAM2/System.h"
 #include "../HelperFunctions.h"
 #include "Predictor.h"
 #include "DroneKalmanFilter.h"
@@ -50,11 +46,27 @@ PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 	node = nde;
 
 	mpMap = 0; 
+	MapPoint* pMP;
 	mpMapMaker = 0; 
 	mpTracker = 0; 
+
+	mSensor = 0;
+    mpVocabulary = 0;
+	mpKeyFrameDatabase = 0;
+	
+	mpLocalMapper = 0;
+	
+	mpLoopCloser = 0;
+
+    mpViewer = 0;
+
+    mpFrameDrawer = 0;
+    mpMapDrawer = 0;
+
+
 	predConvert = 0;
 	predIMUOnlyForScale = 0;
-	mpCamera = 0;
+	//mpCamera = 0;
 	newImageAvailable = false;
 	
 	mapPointsTransformed = std::vector<tvec3>();
@@ -86,7 +98,9 @@ void PTAMWrapper::ResetInternal()
 	if(mpMapMaker != 0) delete mpMapMaker;
 	if(mpMap != 0) delete mpMap;
 	if(mpTracker != 0) delete mpTracker;
-	if(mpCamera != 0) delete mpCamera;
+	if(mpLocalMapper != 0) delete mpLocalMapper;
+	if(mpLoopCloser != 0) delete mpLoopCloser;
+	if(mpViewer != 0) delete mpViewer;
 
 
 	// read camera calibration (yes, its done here)
@@ -112,12 +126,102 @@ void PTAMWrapper::ResetInternal()
 
 
 
-	mpMap = new Map;
-	mpCamera = new ATANCamera(camPar);
+	//mpCamera = new ATANCamera(camPar);
 	mpMapMaker = new MapMaker(*mpMap, *mpCamera);
-	mpTracker = new Tracker(CVD::ImageRef(frameWidth, frameHeight), *mpCamera, *mpMap, *mpMapMaker);
 
-	setPTAMPars(minKFTimeDist, minKFWiggleDist, minKFDist);
+	 //Load ORB Vocabulary
+    cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
+
+    mpVocabulary = new ORBVocabulary();
+    bool bVocLoad = mpVocabulary->loadFromTextFile(strVocFile);
+    if(!bVocLoad)
+    {
+        cerr << "Wrong path to vocabulary. " << endl;
+        cerr << "Falied to open at: " << strVocFile << endl;
+        exit(-1);
+    }
+    cout << "Vocabulary loaded!" << endl << endl;
+
+    //Create KeyFrame Database
+    mpKeyFrameDatabase = new KeyFrameDatabase(*mpVocabulary);
+
+    //Create the Map
+    mpMap = new Map();
+
+    MapPoint* pMP = new MapPoint(worldPos,pKFcur,mpMap);
+
+    //Create Drawers. These are used by the Viewer
+    mpFrameDrawer = new FrameDrawer(mpMap);
+    mpMapDrawer = new MapDrawer(mpMap, strSettingsFile);
+
+    //Initialize the Tracking thread
+    //(it will live in the main thread of execution, the one that called this constructor)
+    mpTracker = new Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
+                             mpMap, mpKeyFrameDatabase, strSettingsFile, mSensor);
+
+    //Initialize the Local Mapping thread and launch
+    mpLocalMapper = new LocalMapping(mpMap, mSensor==MONOCULAR);
+    mptLocalMapping = new thread(&ORB_SLAM2::LocalMapping::Run,mpLocalMapper);
+
+    //Initialize the Loop Closing thread and launch
+    mpLoopCloser = new LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
+    mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
+
+
+    //Set pointers between threads
+    mpTracker->SetLocalMapper(mpLocalMapper);
+    mpTracker->SetLoopClosing(mpLoopCloser);
+
+    mpLocalMapper->SetTracker(mpTracker);
+    mpLocalMapper->SetLoopCloser(mpLoopCloser);
+
+    mpLoopCloser->SetTracker(mpTracker);
+    mpLoopCloser->SetLocalMapper(mpLocalMapper);
+
+
+    if(mSensor!=MONOCULAR)
+    {
+        cerr << "ERROR: you called TrackMonocular but input sensor was not set to Monocular." << endl;
+        exit(-1);
+    }
+
+    // Check mode change
+    {
+        unique_lock<mutex> lock(mMutexMode);
+        if(mbActivateLocalizationMode)
+        {
+            mpLocalMapper->RequestStop();
+
+            // Wait until Local Mapping has effectively stopped
+            while(!mpLocalMapper->isStopped())
+            {
+                usleep(1000);
+            }
+
+            mpTracker->InformOnlyTracking(true);
+            mbActivateLocalizationMode = false;
+        }
+        if(mbDeactivateLocalizationMode)
+        {
+            mpTracker->InformOnlyTracking(false);
+            mpLocalMapper->Release();
+            mbDeactivateLocalizationMode = false;
+        }
+    }
+
+    // Check reset
+    {
+    unique_lock<mutex> lock(mMutexReset);
+    if(mbReset)
+    {
+        mpTracker->Reset();
+        mbReset = false;
+    }
+    }
+
+
+
+	//setPTAMPars(minKFTimeDist, minKFWiggleDist, minKFDist);
 
 	predConvert->setPosRPY(0,0,0,0,0,0);
 	predIMUOnlyForScale->setPosRPY(0,0,0,0,0,0);
@@ -135,7 +239,7 @@ void PTAMWrapper::ResetInternal()
 	node->publishCommand("u l PTAM has been reset.");
 }
 
-void PTAMWrapper::setPTAMPars(double minKFTimeDist, double minKFWiggleDist, double minKFDist)
+/*void PTAMWrapper::setPTAMPars(double minKFTimeDist, double minKFWiggleDist, double minKFDist)
 {
 	if(mpMapMaker != 0)
 		mpMapMaker->minKFDist = minKFDist;
@@ -147,11 +251,11 @@ void PTAMWrapper::setPTAMPars(double minKFTimeDist, double minKFWiggleDist, doub
 	this->minKFDist = minKFDist;
 	this->minKFWiggleDist = minKFWiggleDist;
 	this->minKFTimeDist = minKFTimeDist;
-}
+}*/
 
 PTAMWrapper::~PTAMWrapper(void)
 {
-	if(mpCamera != 0) delete mpCamera;
+	//if(mpCamera != 0) delete mpCamera;
 	if(mpMap != 0) delete mpMap;
 	if(mpMapMaker != 0) delete mpMapMaker;
 	if(mpTracker != 0) delete mpTracker;
@@ -289,15 +393,17 @@ void PTAMWrapper::HandleFrame()
 
 
 	// set
-	mpTracker->setPredictedCamFromW(PTAMPoseGuessSE3);
+	//mpTracker->setPredictedCamFromW(PTAMPoseGuessSE3);
 	//mpTracker->setLastFrameLost((isGoodCount < -10), (videoFrameID%2 != 0));
-	mpTracker->setLastFrameLost((isGoodCount < -20), (mimFrameSEQ_workingCopy%3 == 0));
+	//mpTracker->setLastFrameLost((isGoodCount < -20), (mimFrameSEQ_workingCopy%3 == 0));
 
 	// track
 	ros::Time startedPTAM = ros::Time::now();
-	mpTracker->TrackFrame(mimFrameBW_workingCopy, true);
-	TooN::SE3<> PTAMResultSE3 = mpTracker->GetCurrentPose();
-	lastPTAMMessage = msg = mpTracker->GetMessageForUser();
+	mpTracker->GrabImageMonocular(mimFrameBW_workingCopy, mimFrameTime_workingCopy);
+	cv::Mat Tc2w = mpTracker->GetPose();
+	//TooN::SE3<> PTAMResultSE3 = mpTracker->GetCurrentPose();
+
+	//lastPTAMMessage = msg = mpTracker->GetMessageForUser();
 	ros::Duration timePTAM= ros::Time::now() - startedPTAM;
 
 	TooN::Vector<6> PTAMResultSE3TwistOrg = PTAMResultSE3.ln();
@@ -317,28 +423,11 @@ void PTAMWrapper::HandleFrame()
 
 
 	// init failed?
-	if(mpTracker->lastStepResult == mpTracker->I_FAILED)
+	if(mpTracker->lastStepResult == LOST)
 	{
 		ROS_INFO("initializing PTAM failed, resetting!");
 		resetPTAMRequested = true;
 	}
-	if(mpTracker->lastStepResult == mpTracker->I_SECOND)
-	{
-		PTAMInitializedClock = getMS();
-		filter->setCurrentScales(TooN::makeVector(mpMapMaker->initialScaleFactor*1.2,mpMapMaker->initialScaleFactor*1.2,mpMapMaker->initialScaleFactor*1.2));
-		mpMapMaker->currentScaleFactor = filter->getCurrentScales()[0];
-		ROS_INFO("PTAM initialized!");
-		ROS_INFO("initial scale: %f\n",mpMapMaker->initialScaleFactor*1.2);
-		node->publishCommand("u l PTAM initialized (took second KF)");
-		framesIncludedForScaleXYZ = -1;
-		lockNextFrame = true;
-		imuOnlyPred->resetPos();
-	}
-	if(mpTracker->lastStepResult == mpTracker->I_FIRST)
-	{
-		node->publishCommand("u l PTAM initialization started (took first KF)");
-	}
-
 
 
 
@@ -352,24 +441,19 @@ void PTAMWrapper::HandleFrame()
 	for(int i=0;1<1;i++) diffs[i] = abs(diffs[i]);
 
 
-	if(filter->getNumGoodPTAMObservations() < 10 && mpMap->IsGood())
+	if(filter->getNumGoodPTAMObservations() < 10)
 	{
 		isGood = true;
 		isVeryGood = false;
 	}
-	else if(mpTracker->lastStepResult == mpTracker->I_FIRST ||
-		mpTracker->lastStepResult == mpTracker->I_SECOND || 
-		mpTracker->lastStepResult == mpTracker->I_FAILED ||
-		mpTracker->lastStepResult == mpTracker->T_LOST ||
-		mpTracker->lastStepResult == mpTracker->NOT_TRACKING ||
-		mpTracker->lastStepResult == mpTracker->INITIALIZING)
+	else if(mpTracker->lastStepResult == SYSTEM_NOT_READY ||
+		mpTracker->lastStepResult == NO_IMAGES_YET || 
+		mpTracker->lastStepResult == NOT_INITIALIZED)
 		isGood = isVeryGood = false;
+
 	else
 	{
 		// some chewy heuristic when to add and when not to.
-		bool dodgy = mpTracker->lastStepResult == mpTracker->T_DODGY ||
-			mpTracker->lastStepResult == mpTracker->T_RECOVERED_DODGY;
-
 		// if yaw difference too big: something certainly is wrong.
 		// maximum difference is 5 + 2*(number of seconds since PTAM observation).
 		double maxYawDiff = 10.0 + (getMS()-lastGoodYawClock)*0.002;
@@ -401,10 +485,10 @@ void PTAMWrapper::HandleFrame()
 		if(isGoodCount > 0) isGoodCount = 0;
 		isGoodCount--;
 		
-		if(mpTracker->lastStepResult == mpTracker->T_RECOVERED_DODGY)
+		/*if(mpTracker->lastStepResult == mpTracker->T_RECOVERED_DODGY)
 			isGoodCount = std::max(isGoodCount,-2);
 		if(mpTracker->lastStepResult == mpTracker->T_RECOVERED_GOOD)
-			isGoodCount = std::max(isGoodCount,-5);
+			isGoodCount = std::max(isGoodCount,-5);*/
 
 	}
 
@@ -504,29 +588,23 @@ void PTAMWrapper::HandleFrame()
 
 
 	// ----------------------------- Take KF? -----------------------------------
-	if(!mapLocked && isVeryGood && (forceKF || mpMap->vpKeyFrames.size() < maxKF || maxKF <= 1))
+	if(!mapLocked && isVeryGood && (forceKF || mpMap->KeyFramesInMap() < maxKF || maxKF <= 1))
 	{
-		mpTracker->TakeKF(forceKF);
+		mpTracker->CreateNewKeyFrame();
 		forceKF = false;
 	}
 
 	// ---------------- save PTAM status for KI --------------------------------
-	if(mpTracker->lastStepResult == mpTracker->NOT_TRACKING)
+	if(mpTracker->mLastProcessedState == SYSTEM_NOT_READY)
 		PTAMStatus = PTAM_IDLE;
-	else if(mpTracker->lastStepResult == mpTracker->I_FIRST ||
-		mpTracker->lastStepResult == mpTracker->I_SECOND ||
-		mpTracker->lastStepResult == mpTracker->T_TOOK_KF)
-		PTAMStatus = PTAM_TOOKKF;
-	else if(mpTracker->lastStepResult == mpTracker->INITIALIZING)
+
+	else if(mpTracker->mLastProcessedState == NOT_INITIALIZED)
 		PTAMStatus = PTAM_INITIALIZING;
-	else if(isVeryGood)
+
+	else if(mpTracker->mLastProcessedState == OK)
 		PTAMStatus = PTAM_BEST;
-	else if(isGood)
-		PTAMStatus = PTAM_GOOD;
-	else if(mpTracker->lastStepResult == mpTracker->T_DODGY ||
-		mpTracker->lastStepResult == mpTracker->T_GOOD)
-		PTAMStatus = PTAM_FALSEPOSITIVE;
-	else
+
+	else if(mpTracker->mLastProcessedState == LOST)
 		PTAMStatus = PTAM_LOST;
 
 	 
@@ -536,7 +614,7 @@ void PTAMWrapper::HandleFrame()
 		pthread_mutex_lock(&shallowMapCS);
 		mapPointsTransformed.clear();
 		keyFramesTransformed.clear();
-		for(unsigned int i=0;i<mpMap->vpKeyFrames.size();i++)
+		for(unsigned int i=0;i<mpMap->KeyFramesInMap();i++)
 		{
 			predConvert->setPosSE3_globalToDrone(predConvert->frontToDroneNT * mpMap->vpKeyFrames[i]->se3CfromW);
 			TooN::Vector<6> CamPos = TooN::makeVector(predConvert->x, predConvert->y, predConvert->z, predConvert->roll, predConvert->pitch, predConvert->yaw);
@@ -546,9 +624,9 @@ void PTAMWrapper::HandleFrame()
 		}
 		TooN::Vector<3> PTAMScales = filter->getCurrentScales();
 		TooN::Vector<3> PTAMOffsets = filter->getCurrentOffsets().slice<0,3>();
-		for(unsigned int i=0;i<mpMap->vpPoints.size();i++)
+		for(unsigned int i=0;i<mpMap->MapPointsInMap();i++)
 		{
-			TooN::Vector<3> pos = (mpMap->vpPoints)[i]->v3WorldPos;
+			TooN::Vector<3> pos = (mpMap->GetAllMapPoints())[i]->GetWorldPos();
 			pos[0] *= PTAMScales[0];
 			pos[1] *= PTAMScales[1];
 			pos[2] *= PTAMScales[2];
@@ -601,7 +679,7 @@ void PTAMWrapper::HandleFrame()
 
 	msg += charBuf;
 
-	if(mpMap->IsGood())
+	if()
 	{
 		if(drawUI == UI_DEBUG)
 		{
@@ -711,7 +789,7 @@ void PTAMWrapper::HandleFrame()
 }
 
 
-// Draw the reference grid to give the user an idea of wether tracking is OK or not.
+/*// Draw the reference grid to give the user an idea of wether tracking is OK or not.
 void PTAMWrapper::renderGrid(TooN::SE3<> camFromWorld)
 {
 	myGLWindow->SetupViewport();
@@ -766,6 +844,7 @@ void PTAMWrapper::renderGrid(TooN::SE3<> camFromWorld)
 
 
 }
+*/
 
 TooN::Vector<3> PTAMWrapper::evalNavQue(unsigned int from, unsigned int to, bool* zCorrupted, bool* allCorrupted, float* out_start_pressure, float* out_end_pressure)
 {
@@ -1001,7 +1080,7 @@ bool PTAMWrapper::handleCommand(std::string s)
 {
 	if(s.length() == 5 && s.substr(0,5) == "space")
 	{
-  		mpTracker->pressSpacebar();
+  		//mpTracker->pressSpacebar();
 	}
 
 	// ptam reset: resets only PTAM, keeps filter state.

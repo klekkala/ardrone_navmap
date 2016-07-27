@@ -79,19 +79,26 @@ set(STATEESTIMATION_SOURCE_FILES
   src/stateestimation/PTAMWrapper.cpp
   src/stateestimation/MapView.cpp
   src/stateestimation/EstimationNode.cpp
-  src/stateestimation/PTAM/ATANCamera.cc
-  src/stateestimation/PTAM/Bundle.cc
-  src/stateestimation/PTAM/HomographyInit.cc
-  src/stateestimation/PTAM/KeyFrame.cc
-  src/stateestimation/PTAM/Map.cc
-  src/stateestimation/PTAM/MapMaker.cc
-  src/stateestimation/PTAM/MapPoint.cc
-  src/stateestimation/PTAM/MiniPatch.cc
-  src/stateestimation/PTAM/PatchFinder.cc
-  src/stateestimation/PTAM/Relocaliser.cc
-  src/stateestimation/PTAM/ShiTomasi.cc
-  src/stateestimation/PTAM/SmallBlurryImage.cc
-  src/stateestimation/PTAM/Tracker.cc
+  src/stateestimation/ORB_SLAM2/src/Converter.cc
+  src/stateestimation/ORB_SLAM2/src/Frame.cc
+  src/stateestimation/ORB_SLAM2/src/FrameDrawer.cc
+  src/stateestimation/ORB_SLAM2/src/Initializer.cc
+  src/stateestimation/ORB_SLAM2/src/KeyFrame.cc
+  src/stateestimation/ORB_SLAM2/src/KeyFrameDatabase.cc
+  src/stateestimation/ORB_SLAM2/src/LocalMapping.cc
+  src/stateestimation/ORB_SLAM2/src/LoopClosing.cc
+  src/stateestimation/ORB_SLAM2/src/Map.cc
+  src/stateestimation/ORB_SLAM2/src/MapDrawer.cc
+  src/stateestimation/ORB_SLAM2/src/MapPoint.cc
+  src/stateestimation/ORB_SLAM2/src/Optimizer.cc
+  src/stateestimation/ORB_SLAM2/src/ORBextractor.cc
+  src/stateestimation/ORB_SLAM2/src/ORBmatcher.cc
+  src/stateestimation/ORB_SLAM2/src/PnPsolver.cc
+  src/stateestimation/ORB_SLAM2/src/Sim3Solver.cc
+  src/stateestimation/ORB_SLAM2/src/System.cc
+  src/stateestimation/ORB_SLAM2/src/Tracking.cc
+  src/stateestimation/ORB_SLAM2/src/Viewer.cc
+
 )
 set(STATEESTIMATION_HEADER_FILES    
   src/stateestimation/GLWindow2.h 
@@ -103,27 +110,27 @@ set(STATEESTIMATION_HEADER_FILES
   src/stateestimation/PTAMWrapper.h
   src/stateestimation/MapView.h
   src/stateestimation/EstimationNode.h
-  src/stateestimation/PTAM/ATANCamera.h
-  src/stateestimation/PTAM/Bundle.h
-  src/stateestimation/PTAM/customFixes.h
-  src/stateestimation/PTAM/HomographyInit.h
-  src/stateestimation/PTAM/KeyFrame.h
-  src/stateestimation/PTAM/LevelHelpers.h
-  src/stateestimation/PTAM/Map.h
-  src/stateestimation/PTAM/MapMaker.h
-  src/stateestimation/PTAM/MapPoint.h
-  src/stateestimation/PTAM/MEstimator.h
-  src/stateestimation/PTAM/MiniPatch.h
-  src/stateestimation/PTAM/OpenGL.h
-  src/stateestimation/PTAM/PatchFinder.h
-  src/stateestimation/PTAM/Relocaliser.h
-  src/stateestimation/PTAM/settingsCustom.h
-  src/stateestimation/PTAM/ShiTomasi.h
-  src/stateestimation/PTAM/SmallBlurryImage.h
-  src/stateestimation/PTAM/SmallMatrixOpts.h
-  src/stateestimation/PTAM/TrackerData.h
-  src/stateestimation/PTAM/Tracker.h
-  src/stateestimation/PTAM/VideoSource.h
+  src/stateestimation/ORB_SLAM2/include/Converter.h
+  src/stateestimation/ORB_SLAM2/include/FrameDrawer.h
+  src/stateestimation/ORB_SLAM2/include/Frame.h
+  src/stateestimation/ORB_SLAM2/include/Initializer.h
+  src/stateestimation/ORB_SLAM2/include/KeyFrameDatabase.h
+  src/stateestimation/ORB_SLAM2/include/KeyFrame.h
+  src/stateestimation/ORB_SLAM2/include/LocalMapping.h
+  src/stateestimation/ORB_SLAM2/include/LoopClosing.h
+  src/stateestimation/ORB_SLAM2/include/MapDrawer.h
+  src/stateestimation/ORB_SLAM2/include/Map.h
+  src/stateestimation/ORB_SLAM2/include/MapPoint.h
+  src/stateestimation/ORB_SLAM2/include/Optimizer.h
+  src/stateestimation/ORB_SLAM2/include/ORBextractor.h
+  src/stateestimation/ORB_SLAM2/include/ORBmatcher.h
+  src/stateestimation/ORB_SLAM2/include/ORBVocabulary.h
+  src/stateestimation/ORB_SLAM2/include/PnPsolver.h
+  src/stateestimation/ORB_SLAM2/include/Sim3Solver.h
+  src/stateestimation/ORB_SLAM2/include/System.h
+  src/stateestimation/ORB_SLAM2/include/Tracking.h
+  src/stateestimation/ORB_SLAM2/include/Viewer.h
+
 )
 
 # set required libs and headers

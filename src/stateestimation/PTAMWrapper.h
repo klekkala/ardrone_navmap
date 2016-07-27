@@ -87,10 +87,40 @@ private:
 
 	// Map is in my global Coordinate system. keyframes give the front-cam-position, i.e.
 	// CFromW is "GlobalToFront". this is achieved by aligning the global coordinate systems in the very beginning.
-	Map *mpMap; 
-	MapMaker *mpMapMaker; 
-	Tracker *mpTracker; 
-	ATANCamera *mpCamera;
+	 
+	// Input sensor
+    eSensor mSensor;
+    
+	// ORB vocabulary used for place recognition and feature matching.
+    ORBVocabulary* mpVocabulary;
+
+    // KeyFrame database for place recognition (relocalization and loop detection).
+    KeyFrameDatabase* mpKeyFrameDatabase;
+
+    // Map structure that stores the pointers to all KeyFrames and MapPoints.
+    Map* mpMap;
+
+    // Tracker. It receives a frame and computes the associated camera pose.
+    // It also decides when to insert a new keyframe, create some new MapPoints and
+    // performs relocalization if tracking fails.
+    Tracking* mpTracker;
+
+    // Local Mapper. It manages the local map and performs local bundle adjustment.
+    LocalMapping* mpLocalMapper;
+
+    // Loop Closer. It searches loops with every new keyframe. If there is a loop it performs
+    // a pose graph optimization and full bundle adjustment (in a new thread) afterwards.
+    LoopClosing* mpLoopCloser;
+
+    // The viewer draws the map and the current camera pose. It uses Pangolin.
+    Viewer* mpViewer;
+
+    FrameDrawer* mpFrameDrawer;
+    MapDrawer* mpMapDrawer;
+
+
+
+
 	Predictor* predConvert;			// used ONLY to convert from rpy to se3 and back, i.e. never kept in some state.
 	Predictor* predIMUOnlyForScale;	// used for scale calculation. needs to be updated with every new navinfo...
 
