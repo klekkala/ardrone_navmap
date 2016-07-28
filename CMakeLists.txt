@@ -19,6 +19,10 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
 )
 
+find_package(OpenCV 2.4.3 REQUIRED)
+find_package(Eigen3 3.1.0 REQUIRED)
+find_package(Pangolin REQUIRED)
+
 # Compile third party libs
 include(ExternalProject)
 ExternalProject_Add(thirdparty
@@ -110,6 +114,7 @@ set(STATEESTIMATION_HEADER_FILES
   src/stateestimation/PTAMWrapper.h
   src/stateestimation/MapView.h
   src/stateestimation/EstimationNode.h
+  src/stateestimation/OpenGL.h
   src/stateestimation/ORB_SLAM2/include/Converter.h
   src/stateestimation/ORB_SLAM2/include/FrameDrawer.h
   src/stateestimation/ORB_SLAM2/include/Frame.h
@@ -150,7 +155,8 @@ add_definitions(-DKF_REPROJ)
 # build!
 add_executable(drone_stateestimation ${STATEESTIMATION_SOURCE_FILES} ${STATEESTIMATION_HEADER_FILES})
 set_target_properties(drone_stateestimation PROPERTIES COMPILE_FLAGS "-D_LINUX -D_REENTRANT -Wall  -O3 -march=nocona -msse3") 
-target_link_libraries(drone_stateestimation ${PTAM_LIBRARIES} ${catkin_LIBRARIES})
+target_link_libraries(drone_stateestimation ${PTAM_LIBRARIES} ${catkin_LIBRARIES} ${OpenCV_LIBS} ${EIGEN3_LIBS} ${Pangolin_LIBRARIES} ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so)
+
 add_dependencies(drone_stateestimation thirdparty ${PROJECT_NAME}_gencpp ${PROJECT_NAME}_gencfg)
 
 # ------------------------- autopilot & KI -----------------------------------------

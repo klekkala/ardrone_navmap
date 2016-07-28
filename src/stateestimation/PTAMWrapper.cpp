@@ -45,9 +45,7 @@ PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 	filter = f;
 	node = nde;
 
-	mpMap = 0; 
-	MapPoint* pMP;
-	mpMapMaker = 0; 
+	mpMap = 0;
 	mpTracker = 0; 
 
 	mSensor = 0;
@@ -95,8 +93,9 @@ void PTAMWrapper::ResetInternal()
 	mimFrameBW_workingCopy.resize(CVD::ImageRef(frameWidth, frameHeight));
 
 
-	if(mpMapMaker != 0) delete mpMapMaker;
+	//if(mpMapMaker != 0) delete mpMapMaker;
 	if(mpMap != 0) delete mpMap;
+	if(mpMapDrawer != 0) delete mpMapDrawer;
 	if(mpTracker != 0) delete mpTracker;
 	if(mpLocalMapper != 0) delete mpLocalMapper;
 	if(mpLoopCloser != 0) delete mpLoopCloser;
@@ -127,7 +126,7 @@ void PTAMWrapper::ResetInternal()
 
 
 	//mpCamera = new ATANCamera(camPar);
-	mpMapMaker = new MapMaker(*mpMap, *mpCamera);
+	//mpMapMaker = new MapMaker(*mpMap, *mpCamera);
 
 	 //Load ORB Vocabulary
     cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
@@ -147,8 +146,6 @@ void PTAMWrapper::ResetInternal()
 
     //Create the Map
     mpMap = new Map();
-
-    MapPoint* pMP = new MapPoint(worldPos,pKFcur,mpMap);
 
     //Create Drawers. These are used by the Viewer
     mpFrameDrawer = new FrameDrawer(mpMap);
@@ -257,7 +254,7 @@ PTAMWrapper::~PTAMWrapper(void)
 {
 	//if(mpCamera != 0) delete mpCamera;
 	if(mpMap != 0) delete mpMap;
-	if(mpMapMaker != 0) delete mpMapMaker;
+	if(mpMapDrawer != 0) delete mpMapDrawer;
 	if(mpTracker != 0) delete mpTracker;
 	if(predConvert != 0) delete predConvert;
 	if(predIMUOnlyForScale != 0) delete predIMUOnlyForScale;
@@ -392,23 +389,24 @@ void PTAMWrapper::HandleFrame()
 	TooN::SE3<> PTAMPoseGuessSE3 = predConvert->droneToFrontNT * predConvert->globaltoDrone;
 
 
+	cv::Mat iTcw = toSE3(PTAMPoseGuessSE3);
 	// set
-	//mpTracker->setPredictedCamFromW(PTAMPoseGuessSE3);
+	mpTracker->setPredictedCamFromW(iTcw);
 	//mpTracker->setLastFrameLost((isGoodCount < -10), (videoFrameID%2 != 0));
 	//mpTracker->setLastFrameLost((isGoodCount < -20), (mimFrameSEQ_workingCopy%3 == 0));
 
 	// track
 	ros::Time startedPTAM = ros::Time::now();
-	mpTracker->GrabImageMonocular(mimFrameBW_workingCopy, mimFrameTime_workingCopy);
-	cv::Mat Tc2w = mpTracker->GetPose();
-	//TooN::SE3<> PTAMResultSE3 = mpTracker->GetCurrentPose();
+	cv::Mat Tcw = mpTracker->GrabImageMonocular(mimFrameBW_workingCopy, mimFrameTime_workingCopy);
+	//cv::Mat Tc2w = mpTracker->GetPose();
+	TooN::SE3<> PTAMResultSE3 = Tc2w;
 
 	//lastPTAMMessage = msg = mpTracker->GetMessageForUser();
 	ros::Duration timePTAM= ros::Time::now() - startedPTAM;
 
 	TooN::Vector<6> PTAMResultSE3TwistOrg = PTAMResultSE3.ln();
 
-	node->publishTf(mpTracker->GetCurrentPose(),mimFrameTimeRos_workingCopy, mimFrameSEQ_workingCopy,"cam_front");
+	node->publishTf(Tcw, mimFrameTimeRos_workingCopy, mimFrameSEQ_workingCopy,"cam_front");
 
 
 	// 1. multiply from left by frontToDroneNT.
@@ -560,7 +558,7 @@ void PTAMWrapper::HandleFrame()
 				diffIMU.slice<0,2>() *= xyFactor; diffIMU[2] *= zFactor;
 
 				filter->updateScaleXYZ(diffPTAM, diffIMU, PTAMResult.slice<0,3>());
-				mpMapMaker->currentScaleFactor = filter->getCurrentScales()[0];
+				mpMapDrawer->currentScaleFactor = filter->getCurrentScales()[0];
 			}
 			framesIncludedForScaleXYZ = -1;	// causing reset afterwards
 		}
@@ -704,8 +702,8 @@ void PTAMWrapper::HandleFrame()
 
 
 			snprintf(charBuf,1000,"\nPTAM WiggleDist:              ");
-			snprintf(charBuf+18,800, "%.3f                          ",mpMapMaker->lastWiggleDist);
-			snprintf(charBuf+24,800, "MetricDist: %.3f",mpMapMaker->lastMetricDist);
+			//snprintf(charBuf+18,800, "%.3f                          ",mpMapMaker->lastWiggleDist);
+			//snprintf(charBuf+24,800, "MetricDist: %.3f",mpMapMaker->lastMetricDist);
 			msg += charBuf;
 		}
 	}

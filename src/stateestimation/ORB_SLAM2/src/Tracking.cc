@@ -153,6 +153,12 @@ void Tracking::SetLocalMapper(LocalMapping *pLocalMapper)
     mpLocalMapper=pLocalMapper;
 }
 
+void Tracking::setPredictedCamFromW(cv::Mat iTcw)
+{
+    mCurrentFrame.SetPose(iTcw);
+}
+
+
 void Tracking::SetLoopClosing(LoopClosing *pLoopClosing)
 {
     mpLoopClosing=pLoopClosing;
