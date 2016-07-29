@@ -40,7 +40,7 @@
 
 class DroneKalmanFilter;
 class MapView;
-class LSDWrapper;
+class PTAMWrapper;
 
 struct EstimationNode
 {
@@ -93,7 +93,7 @@ private:
 public:
 	// filter
 	DroneKalmanFilter* filter;
-	LSDWrapper* lsdWrapper;
+	PTAMWrapper* ptamWrapper;
 	MapView* mapView;
 	std::string packagePath;
 
@@ -121,13 +121,13 @@ public:
 	// logging stuff
 	// logging stuff
 	std::ofstream* logfileIMU;
-	std::ofstream* logfileLSD;
+	std::ofstream* logfilePTAM;
 	std::ofstream* logfileFilter;
-	std::ofstream* logfileLSDRaw;
+	std::ofstream* logfilePTAMRaw;
 	static pthread_mutex_t logIMU_CS;
-	static pthread_mutex_t logLSD_CS;
+	static pthread_mutex_t logPTAM_CS;
 	static pthread_mutex_t logFilter_CS;
-	static pthread_mutex_t logLSDRaw_CS;
+	static pthread_mutex_t logPTAMRaw_CS;
 	long currentLogID;
 	long startedLogClock;
 

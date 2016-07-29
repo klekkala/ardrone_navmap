@@ -17,7 +17,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with tum_ardrone.  If not, see <http://www.gnu.org/licenses/>.
  */
-
+ 
 #include "MapView.h"
 #include "../HelperFunctions.h"
 #include <cvd/gl_helpers.h>
@@ -25,15 +25,15 @@
 #include "Predictor.h"
 #include <gvars3/instances.h>
 #include "DroneKalmanFilter.h"
-#include "LSDWrapper.h"
+#include "PTAMWrapper.h"
 #include "EstimationNode.h"
 
 pthread_mutex_t MapView::trailPointsVec_CS = PTHREAD_MUTEX_INITIALIZER; //pthread_mutex_lock( &cs_mutex );
 
-MapView::MapView(DroneKalmanFilter* f, LSDWrapper* p, EstimationNode* nde)
+MapView::MapView(DroneKalmanFilter* f, PTAMWrapper* p, EstimationNode* nde)
 {
 	filter = f;
-	lsdWrapper = p;
+	ptamWrapper = p;
 	node = nde;
 	drawUI = UI_PRES;
 	resetRequested = false;
@@ -74,8 +74,8 @@ void MapView::stopSystem()
 void MapView::run()
 {
 	sleep(1000);
-    myGLWindow = new GLWindow2(CVD::ImageRef(640,480), "LSD Drone Map View",this);
-	myGLWindow->set_title("LSD Drone Map View");
+    myGLWindow = new GLWindow2(CVD::ImageRef(640,480), "PTAM Drone Map View",this);
+	myGLWindow->set_title("PTAM Drone Map View");
 
 	while(keepRunning)
 	{
@@ -95,7 +95,7 @@ void MapView::Render()
 	lastFramePoseSpeed = filter->getCurrentPoseSpeedAsVec();	// Note: this is maybe an old pose, but max. one frame old = 50ms = not noticable.
 	pthread_mutex_unlock(&filter->filter_CS);
 
-
+	
 
 
 	if(clearTrail)
@@ -116,43 +116,46 @@ void MapView::Render()
 	}
 
 
-
+	
 
 
 	// the following complicated code is to save trail-points in ptam-scale, such that scale-reestimation will re-scale the drawn path.
 	if(addTrail)
 	{
-		if(lsdWrapper->LSDStatus == lsdWrapper->LSD_GOOD)
+		if(ptamWrapper->PTAMStatus == ptamWrapper->PTAM_BEST ||
+				ptamWrapper->PTAMStatus == ptamWrapper->PTAM_TOOKKF ||
+				ptamWrapper->PTAMStatus == ptamWrapper->PTAM_GOOD)
 		{
-			if(lsdWrapper->LSDInitializedClock != 0 && getMS() - lsdWrapper->LSDInitializedClock > 200)
+			if(ptamWrapper->PTAMInitializedClock != 0 && getMS() - ptamWrapper->PTAMInitializedClock > 200)
 			{
-				TooN::Vector<3> LSDScales = filter->getCurrentScales();
-				TooN::Vector<3> LSDOffsets = filter->getCurrentOffsets().slice<0,3>();
+				TooN::Vector<3> PTAMScales = filter->getCurrentScales();
+				TooN::Vector<3> PTAMOffsets = filter->getCurrentOffsets().slice<0,3>();
 
-				TooN::Vector<3> lsdPointPos = lastFramePoseSpeed.slice<0,3>();
-				lsdPointPos -= LSDOffsets;
-				lsdPointPos /= LSDScales[0];
+				TooN::Vector<3> ptamPointPos = lastFramePoseSpeed.slice<0,3>();
+				ptamPointPos -= PTAMOffsets;
+				ptamPointPos /= PTAMScales[0];
 
 				trailPoints.push_back(TrailPoint(
 					lastFramePoseSpeed.slice<0,3>(),
-					lsdPointPos
+					ptamPointPos
 				));
 			}
 		}
-		else if(lsdWrapper->LSDStatus == lsdWrapper->LSD_LOST)
+		else if(ptamWrapper->PTAMStatus == ptamWrapper->PTAM_LOST ||
+				ptamWrapper->PTAMStatus == ptamWrapper->PTAM_FALSEPOSITIVE)
 		{
-			if(lsdWrapper->LSDInitializedClock != 0 && getMS() - lsdWrapper->LSDInitializedClock > 200)
+			if(ptamWrapper->PTAMInitializedClock != 0 && getMS() - ptamWrapper->PTAMInitializedClock > 200)
 			{
-				TooN::Vector<3> LSDScales = filter->getCurrentScales();
-				TooN::Vector<3> LSDOffsets = filter->getCurrentOffsets().slice<0,3>();
+				TooN::Vector<3> PTAMScales = filter->getCurrentScales();
+				TooN::Vector<3> PTAMOffsets = filter->getCurrentOffsets().slice<0,3>();
 
-				TooN::Vector<3> lsdPointPos = lastFramePoseSpeed.slice<0,3>();
-				lsdPointPos -= LSDOffsets;
-				lsdPointPos /= LSDScales[0];
+				TooN::Vector<3> ptamPointPos = lastFramePoseSpeed.slice<0,3>();
+				ptamPointPos -= PTAMOffsets;
+				ptamPointPos /= PTAMScales[0];
 
 				trailPoints.push_back(TrailPoint(
 					lastFramePoseSpeed.slice<0,3>(),
-					lsdPointPos
+					ptamPointPos
 				));
 			}
 		}
@@ -181,21 +184,21 @@ void MapView::Render()
 
 	plotGrid();
 
-	pthread_mutex_lock(&lsdWrapper->shallowMapCS);
-	std::vector<tse3>* kfl = &(lsdWrapper->keyFramesTransformed);
-
+	pthread_mutex_lock(&ptamWrapper->shallowMapCS);
+	std::vector<tse3>* kfl = &(ptamWrapper->keyFramesTransformed);
+	
 	// draw keyframes
 	for(unsigned int i=0;i<kfl->size();i++)
 	{
 		plotCam((*kfl)[i],false,2,0.04f,1);
 	}
-
+	
 	// draw trail
 	drawTrail();
 
 	// draw keypoints
 	plotMapPoints();
-	pthread_mutex_unlock(&lsdWrapper->shallowMapCS);
+	pthread_mutex_unlock(&ptamWrapper->shallowMapCS);
 
 	// draw predicted cam
 
@@ -225,7 +228,7 @@ void MapView::Render()
 		snprintf(charBuf+90,800, "vz: %.2f                          ",lastFramePoseSpeed[8]);
 		snprintf(charBuf+100,800, "vy: %.2f",lastFramePoseSpeed[9]);
 		msg += charBuf;
-
+	
 
 		snprintf(charBuf,1000,"\nSync:              ");
 		snprintf(charBuf+10,800, "ox: %.2f                          ",of[0]);
@@ -264,7 +267,7 @@ void MapView::Render()
 		snprintf(charBuf+61,800, "%.2f)                          ",lastFramePoseSpeed[5]);
 		msg += charBuf;
 	}
-
+	
 
 	myGLWindow->GetMousePoseUpdate();
 
@@ -295,29 +298,29 @@ void MapView::drawTrail()
 	glEnable(GL_DEPTH_TEST);
 
 	// draw cam
-	glMatrixMode(GL_MODELVIEW);
+	glMatrixMode(GL_MODELVIEW);  
 	glLoadIdentity();
 	glScaled(0.1,0.1,0.1);
 	CVD::glMultMatrix(mse3ViewerFromWorld);
 	SetupFrustum();
-	glEnable(GL_BLEND);
+	glEnable(GL_BLEND); 
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glLineWidth(3*lineWidthFactor);
 	glBegin(GL_LINES);
 	glColor4f(0,1,0,0.6);
 
-	TooN::Vector<3> LSDScales = filter->getCurrentScales();
-	TooN::Vector<3> LSDOffsets = filter->getCurrentOffsets().slice<0,3>();
+	TooN::Vector<3> PTAMScales = filter->getCurrentScales();
+	TooN::Vector<3> PTAMOffsets = filter->getCurrentOffsets().slice<0,3>();
 
 	for(unsigned int i=1;i<trailPoints.size();i++)
 	{
-		if(trailPoints[i].LSDValid)
+		if(trailPoints[i].PTAMValid)
 		{
-			trailPoints[i].pointFilter = trailPoints[i].pointLSD;
-			trailPoints[i].pointFilter[0] *= LSDScales[0];
-			trailPoints[i].pointFilter[1] *= LSDScales[1];
-			trailPoints[i].pointFilter[2] *= LSDScales[2];
-			trailPoints[i].pointFilter += LSDOffsets;
+			trailPoints[i].pointFilter = trailPoints[i].pointPTAM;
+			trailPoints[i].pointFilter[0] *= PTAMScales[0];
+			trailPoints[i].pointFilter[1] *= PTAMScales[1];
+			trailPoints[i].pointFilter[2] *= PTAMScales[2];
+			trailPoints[i].pointFilter += PTAMOffsets;
 		}
 		if(i > 1 && i < trailPoints.size()-1)
 			glVertex3f((float)trailPoints[i].pointFilter[0], (float)trailPoints[i].pointFilter[1], (float)trailPoints[i].pointFilter[2]);
@@ -335,34 +338,33 @@ void MapView::drawTrail()
 
 void MapView::plotMapPoints()
 {
-
+	
 	glEnable(GL_DEPTH_TEST);
 
 	// draw cam
-	glMatrixMode(GL_MODELVIEW);
+	glMatrixMode(GL_MODELVIEW);  
 	glLoadIdentity();
 	glScaled(0.1,0.1,0.1);
 	CVD::glMultMatrix(mse3ViewerFromWorld);
 	SetupFrustum();
-	float width = 1.0f;
-	float len = 0.02f;
+	float width = 3.0f;
+	float len = 0.04f;
 
 	glLineWidth(width*lineWidthFactor);
 	glBegin(GL_LINES);
 	glColor3f(1,0,0);
+	glLineWidth(5.0f);
 
-
-	//Check with this later because LSD has a graph optimization technique which makes the generated map flush and plot each time
-	std::vector<tvec3>* mpl = &(lsdWrapper->mapPointsTransformed);
-
+	std::vector<tvec3>* mpl = &(ptamWrapper->mapPointsTransformed);
+	
 	for(unsigned int i=0;i<mpl->size();i++)
 	{
 		TooN::Vector<3> pos = (*mpl)[i];
-
+		
 		glVertex3f((float)pos[0]-len, (float)pos[1], (float)pos[2]);
-		glVertex3f((float)pos[0]+len, (float)pos[1], (float)pos[2]);
+		glVertex3f((float)pos[0]+len, (float)pos[1], (float)pos[2]);		
 		glVertex3f((float)pos[0], (float)pos[1]-len, (float)pos[2]);
-		glVertex3f((float)pos[0], (float)pos[1]+len, (float)pos[2]);
+		glVertex3f((float)pos[0], (float)pos[1]+len, (float)pos[2]);		
 		glVertex3f((float)pos[0], (float)pos[1], (float)pos[2]-len);
 		glVertex3f((float)pos[0], (float)pos[1], (float)pos[2]+len);
 	}
@@ -373,7 +375,7 @@ void MapView::plotMapPoints()
 	glDisable(GL_DEPTH_TEST);
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-
+	
 }
 
 void MapView::plotCam(TooN::SE3<> droneToGlobal, bool xyCross, float thick, float len, float alpha)
@@ -381,7 +383,7 @@ void MapView::plotCam(TooN::SE3<> droneToGlobal, bool xyCross, float thick, floa
 	glEnable(GL_DEPTH_TEST);
 
 	// draw cam
-	glMatrixMode(GL_MODELVIEW);
+	glMatrixMode(GL_MODELVIEW);  
 	glLoadIdentity();
 	glScaled(0.1,0.1,0.1);
 	CVD::glMultMatrix(mse3ViewerFromWorld * droneToGlobal);
@@ -392,11 +394,11 @@ void MapView::plotCam(TooN::SE3<> droneToGlobal, bool xyCross, float thick, floa
 
 	if(alpha < 1)
 	{
-		glEnable(GL_BLEND);
+		glEnable(GL_BLEND); 
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
 	else
-		glDisable(GL_BLEND);
+		glDisable(GL_BLEND); 
 
 
 	glBegin(GL_LINES);
@@ -415,7 +417,7 @@ void MapView::plotCam(TooN::SE3<> droneToGlobal, bool xyCross, float thick, floa
 	glVertex3f(0.0f, 0.0f, len);
 	glEnd();
 
-
+	
 	if(xyCross)
 	{
 		glLineWidth(1*lineWidthFactor);
@@ -430,14 +432,14 @@ void MapView::plotCam(TooN::SE3<> droneToGlobal, bool xyCross, float thick, floa
 		glVertex2d(v2CamPosXY[0] + 0.04, v2CamPosXY[1] + 0.04);
 		glEnd();
 	}
-	glDisable(GL_BLEND);
+	glDisable(GL_BLEND); 
 	glDisable(GL_DEPTH_TEST);
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 }
 
 void MapView::resetMapView()
-{
+{	
 	mse3ViewerFromWorld =  TooN::SE3<>::exp(TooN::makeVector(0,0,4,0,0,0)) * TooN::SE3<>::exp(TooN::makeVector(0,0,0,0.8 * M_PI,0,0));
 }
 
@@ -448,7 +450,7 @@ void MapView::plotGrid()
  	std::pair<TooN::Vector<6>, TooN::Vector<6> > pv6 = myGLWindow->GetMousePoseUpdate();
 	TooN::SE3<> se3CamFromMC;
 	se3CamFromMC.get_translation() = mse3ViewerFromWorld * TooN::makeVector(0,0,0);
-	mse3ViewerFromWorld = TooN::SE3<>::exp(pv6.first) *
+	mse3ViewerFromWorld = TooN::SE3<>::exp(pv6.first) * 
 	se3CamFromMC * TooN::SE3<>::exp(pv6.second).inverse() * se3CamFromMC.inverse() * mse3ViewerFromWorld;
 
 	myGLWindow->SetupViewport();
@@ -549,7 +551,7 @@ void MapView::plotGrid()
 
 void MapView::SetupFrustum()
 {
-  glMatrixMode(GL_PROJECTION);
+  glMatrixMode(GL_PROJECTION);  
   glLoadIdentity();
   double zNear = 0.03;
   glFrustum(-zNear, zNear, 0.75*zNear,-0.75*zNear,zNear,50);
@@ -559,7 +561,7 @@ void MapView::SetupFrustum()
 
 void MapView::SetupModelView(TooN::SE3<> se3WorldFromCurrent)
 {
-  glMatrixMode(GL_MODELVIEW);
+  glMatrixMode(GL_MODELVIEW);  
   glLoadIdentity();
   CVD::glMultMatrix(mse3ViewerFromWorld * se3WorldFromCurrent);
   return;
@@ -613,7 +615,7 @@ bool MapView::handleCommand(std::string s)
 	if(s.length() == 5 && s.substr(0,5) == "reset")
 	{
 		filter->reset();
-		lsdWrapper->Reset();
+		ptamWrapper->Reset();
 		clearTrail = true;
 	}
 	return true;

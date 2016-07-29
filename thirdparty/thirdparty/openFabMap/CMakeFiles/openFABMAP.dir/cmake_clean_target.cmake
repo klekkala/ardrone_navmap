@@ -1,3 +1,0 @@
-FILE(REMOVE_RECURSE
-  "libopenFABMAP.a"
-)

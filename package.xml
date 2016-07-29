@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package>
-  <name>ardrone_navmap</name>
+  <name>tum_ardrone</name>
   <version>0.0.0</version>
-  <description>The ardrone_navmap package</description>
+  <description>The tum_ardrone package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag --> 
   <!-- Example:  -->
