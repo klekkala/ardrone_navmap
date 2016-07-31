@@ -1,1 +1,0 @@
-/home/kiran/catkin_ws/src/ardrone_navmap/thirdparty/thirdparty/DBoW2/build/CMakeFiles/DBoW2.dir
