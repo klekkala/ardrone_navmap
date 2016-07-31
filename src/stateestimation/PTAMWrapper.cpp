@@ -23,7 +23,6 @@
 #include "PTAMWrapper.h"
 #include <cvd/gl_helpers.h>
 #include <gvars3/instances.h>
-#include "ORB_SLAM2/System.h"
 #include "../HelperFunctions.h"
 #include "Predictor.h"
 #include "DroneKalmanFilter.h"
@@ -34,32 +33,25 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <thread>
+#include <pangolin/pangolin.h>
+#include <iomanip>
+
 
 pthread_mutex_t PTAMWrapper::navInfoQueueCS = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t PTAMWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_mutex_t PTAMWrapper::logScalePairs_CS = PTHREAD_MUTEX_INITIALIZER;
 
-PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde)
+
+PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde, const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
+               const bool bUseViewer):mSensor(sensor),mbReset(false),mbActivateLocalizationMode(false),
+        mbDeactivateLocalizationMode(false)
 {
+
 	filter = f;
 	node = nde;
 
-	mpMap = 0;
-	mpTracker = 0; 
-
-	mSensor = 0;
-    mpVocabulary = 0;
-	mpKeyFrameDatabase = 0;
-	
-	mpLocalMapper = 0;
-	
-	mpLoopCloser = 0;
-
-    mpViewer = 0;
-
-    mpFrameDrawer = 0;
-    mpMapDrawer = 0;
 
 
 	predConvert = 0;
@@ -85,7 +77,88 @@ PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 	maxKF = 60;
 
 	logfileScalePairs = 0;
+
+
+    // Output welcome message
+    cout << endl <<
+    "ORB-SLAM2 Copyright (C) 2014-2016 Raul Mur-Artal, University of Zaragoza." << endl <<
+    "This program comes with ABSOLUTELY NO WARRANTY;" << endl  <<
+    "This is free software, and you are welcome to redistribute it" << endl <<
+    "under certain conditions. See LICENSE.txt." << endl << endl;
+
+    cout << "Input sensor was set to: ";
+
+    if(mSensor==MONOCULAR)
+        cout << "Monocular" << endl;
+    else if(mSensor==STEREO)
+        cout << "Stereo" << endl;
+    else if(mSensor==RGBD)
+        cout << "RGB-D" << endl;
+
+    //Check settings file
+    cv::FileStorage fsSettings(strSettingsFile.c_str(), cv::FileStorage::READ);
+    if(!fsSettings.isOpened())
+    {
+       cerr << "Failed to open settings file at: " << strSettingsFile << endl;
+       exit(-1);
+    }
+
+
+    //Load ORB Vocabulary
+    cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
+
+    mpVocabulary = new ORB_SLAM2::ORBVocabulary();
+    bool bVocLoad = mpVocabulary->loadFromTextFile(strVocFile);
+    if(!bVocLoad)
+    {
+        cerr << "Wrong path to vocabulary. " << endl;
+        cerr << "Falied to open at: " << strVocFile << endl;
+        exit(-1);
+    }
+    cout << "Vocabulary loaded!" << endl << endl;
+
+    //Create KeyFrame Database
+    mpKeyFrameDatabase = new ORB_SLAM2::KeyFrameDatabase(*mpVocabulary);
+
+    //Create the Map
+    mpMap = new ORB_SLAM2::Map();
+
+    //Create Drawers. These are used by the Viewer
+    mpFrameDrawer = new ORB_SLAM2::FrameDrawer(mpMap);
+    mpMapDrawer = new ORB_SLAM2::MapDrawer(mpMap, strSettingsFile);
+
+    //Initialize the Tracking thread
+    //(it will live in the main thread of execution, the one that called this constructor)
+    mpTracker = new ORB_SLAM2::Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
+                             mpMap, mpKeyFrameDatabase, strSettingsFile, mSensor);
+
+    //Initialize the Local Mapping thread and launch
+    mpLocalMapper = new ORB_SLAM2::LocalMapping(mpMap, mSensor==MONOCULAR);
+    mptLocalMapping = new thread(&ORB_SLAM2::LocalMapping::Run,mpLocalMapper);
+
+    //Initialize the Loop Closing thread and launch
+    mpLoopCloser = new ORB_SLAM2::LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
+    mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
+
+    //Initialize the Viewer thread and launch
+    mpViewer = new ORB_SLAM2::Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile);
+    if(bUseViewer)
+        mptViewer = new thread(&Viewer::Run, mpViewer);
+
+    mpTracker->SetViewer(mpViewer);
+
+    //Set pointers between threads
+    mpTracker->SetLocalMapper(mpLocalMapper);
+    mpTracker->SetLoopClosing(mpLoopCloser);
+
+    mpLocalMapper->SetTracker(mpTracker);
+    mpLocalMapper->SetLoopCloser(mpLoopCloser);
+
+    mpLoopCloser->SetTracker(mpTracker);
+    mpLoopCloser->SetLocalMapper(mpLocalMapper);
 }
+
+
 
 void PTAMWrapper::ResetInternal()
 {
@@ -124,59 +197,15 @@ void PTAMWrapper::ResetInternal()
 	std::cout<< "Set Camera Paramerer to: " << camPar[0] << " " << camPar[1] << " " << camPar[2] << " " << camPar[3] << " " << camPar[4] << std::endl;
 
 
+	mbReset = true;
 
 	//mpCamera = new ATANCamera(camPar);
 	//mpMapMaker = new MapMaker(*mpMap, *mpCamera);
 
 	 //Load ORB Vocabulary
-    cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
-
-    mpVocabulary = new ORBVocabulary();
-    bool bVocLoad = mpVocabulary->loadFromTextFile(strVocFile);
-    if(!bVocLoad)
-    {
-        cerr << "Wrong path to vocabulary. " << endl;
-        cerr << "Falied to open at: " << strVocFile << endl;
-        exit(-1);
-    }
-    cout << "Vocabulary loaded!" << endl << endl;
-
-    //Create KeyFrame Database
-    mpKeyFrameDatabase = new KeyFrameDatabase(*mpVocabulary);
-
-    //Create the Map
-    mpMap = new Map();
-
-    //Create Drawers. These are used by the Viewer
-    mpFrameDrawer = new FrameDrawer(mpMap);
-    mpMapDrawer = new MapDrawer(mpMap, strSettingsFile);
-
-    //Initialize the Tracking thread
-    //(it will live in the main thread of execution, the one that called this constructor)
-    mpTracker = new Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
-                             mpMap, mpKeyFrameDatabase, strSettingsFile, mSensor);
-
-    //Initialize the Local Mapping thread and launch
-    mpLocalMapper = new LocalMapping(mpMap, mSensor==MONOCULAR);
-    mptLocalMapping = new thread(&ORB_SLAM2::LocalMapping::Run,mpLocalMapper);
-
-    //Initialize the Loop Closing thread and launch
-    mpLoopCloser = new LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
-    mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
 
 
-    //Set pointers between threads
-    mpTracker->SetLocalMapper(mpLocalMapper);
-    mpTracker->SetLoopClosing(mpLoopCloser);
-
-    mpLocalMapper->SetTracker(mpTracker);
-    mpLocalMapper->SetLoopCloser(mpLoopCloser);
-
-    mpLoopCloser->SetTracker(mpTracker);
-    mpLoopCloser->SetLocalMapper(mpLocalMapper);
-
-
-    if(mSensor!=MONOCULAR)
+    /*if(mSensor!=MONOCULAR)
     {
         cerr << "ERROR: you called TrackMonocular but input sensor was not set to Monocular." << endl;
         exit(-1);
@@ -214,7 +243,7 @@ void PTAMWrapper::ResetInternal()
         mpTracker->Reset();
         mbReset = false;
     }
-    }
+    }*/
 
 
 
@@ -398,7 +427,7 @@ void PTAMWrapper::HandleFrame()
 	// track
 	ros::Time startedPTAM = ros::Time::now();
 	cv::Mat Tcw = mpTracker->GrabImageMonocular(mimFrameBW_workingCopy, mimFrameTime_workingCopy);
-	//cv::Mat Tc2w = mpTracker->GetPose();
+	cv::Mat Tc2w = mpTracker->GetPose();
 	TooN::SE3<> PTAMResultSE3 = Tc2w;
 
 	//lastPTAMMessage = msg = mpTracker->GetMessageForUser();

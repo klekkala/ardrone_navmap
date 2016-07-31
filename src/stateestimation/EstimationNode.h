@@ -21,6 +21,9 @@
 #ifndef __ESTIMATIONNODE_H
 #define __ESTIMATIONNODE_H
  
+#include <string>
+#include <thread>
+#include <opencv2/core/core.hpp>
 
 #include "ros/ros.h"
 #include "geometry_msgs/Twist.h"
@@ -36,14 +39,18 @@
 #include <dynamic_reconfigure/server.h>
 #include "tum_ardrone/StateestimationParamsConfig.h"
 #include "TooN/se3.h"
+#include "PTAMWrapper.h"
 
 
 class DroneKalmanFilter;
 class MapView;
+
 class PTAMWrapper;
 
 struct EstimationNode
 {
+
+
 private:
 	// comm with drone
 	ros::Subscriber navdata_sub; // drone navdata
@@ -97,7 +104,7 @@ public:
 	MapView* mapView;
 	std::string packagePath;
 
-	EstimationNode();
+	EstimationNode(const string &strVocFile, const string &strSettingsFile);
 	~EstimationNode();
 
 
@@ -137,4 +144,5 @@ public:
 
 
 };
+
 #endif /* __ESTIMATIONNODE_H */

@@ -34,13 +34,15 @@
 #include <ardrone_autonomy/Navdata.h>
 #include "deque"
 #include "tum_ardrone/filter_state.h"
-#include "PTAMWrapper.h"
 #include "std_msgs/String.h"
 #include "std_msgs/Empty.h"
 #include "std_srvs/Empty.h"
 #include "MapView.h"
 #include <sys/stat.h>
 #include <string>
+#include <thread>
+#include <pangolin/pangolin.h>
+#include <iomanip>
 
 using namespace std;
 
@@ -49,7 +51,7 @@ pthread_mutex_t EstimationNode::logPTAM_CS = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t EstimationNode::logFilter_CS = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t EstimationNode::logPTAMRaw_CS = PTHREAD_MUTEX_INITIALIZER;
 
-EstimationNode::EstimationNode()
+EstimationNode::EstimationNode(const string &strVocFile, const string &strSettingsFile)
 {
     navdata_channel = nh_.resolveName("ardrone/navdata");
     control_channel = nh_.resolveName("cmd_vel");
@@ -99,7 +101,7 @@ EstimationNode::EstimationNode()
 	droneRosTSOffset = 0;
 	lastNavStamp = ros::Time(0);
 	filter = new DroneKalmanFilter(this);
-	ptamWrapper = new PTAMWrapper(filter, this);
+	ptamWrapper = new PTAMWrapper(filter, this, &strVocFile, &strSettingsFile, ORB_SLAM2::System::MONOCULAR, true);
 	mapView = new MapView(filter, ptamWrapper, this);
 	arDroneVersion = 0;
 	//memset(&lastNavdataReceived,0,sizeof(ardrone_autonomy::Navdata));

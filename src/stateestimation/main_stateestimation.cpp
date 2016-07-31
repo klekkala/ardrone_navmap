@@ -17,7 +17,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with tum_ardrone.  If not, see <http://www.gnu.org/licenses/>.
  */
- 
+
 #include "EstimationNode.h"
 #include "ros/ros.h"
 #include "PTAMWrapper.h"
@@ -36,7 +36,7 @@ int main(int argc, char **argv)
 
   ROS_INFO("Started TUM ArDrone Stateestimation Node.");
 
-  EstimationNode estimator;
+  EstimationNode estimator(argv[1],argv[2]);
 
   dynamic_reconfigure::Server<tum_ardrone::StateestimationParamsConfig> srv;
   dynamic_reconfigure::Server<tum_ardrone::StateestimationParamsConfig>::CallbackType f;
