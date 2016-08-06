@@ -742,8 +742,8 @@ void PTAMWrapper::HandleFrame()
 		// render grid
 		predConvert->setPosRPY(filterPosePostPTAM[0], filterPosePostPTAM[1], filterPosePostPTAM[2], filterPosePostPTAM[3], filterPosePostPTAM[4], filterPosePostPTAM[5]);
 
-		//renderGrid(predConvert->droneToFrontNT * predConvert->globaltoDrone);
-		//renderGrid(PTAMResultSE3);
+		renderGrid(predConvert->droneToFrontNT * predConvert->globaltoDrone);
+		renderGrid(PTAMResultSE3);
 
 
 		// draw HUD
@@ -816,7 +816,7 @@ void PTAMWrapper::HandleFrame()
 }
 
 
-/*// Draw the reference grid to give the user an idea of wether tracking is OK or not.
+// Draw the reference grid to give the user an idea of wether tracking is OK or not.
 void PTAMWrapper::renderGrid(TooN::SE3<> camFromWorld)
 {
 	myGLWindow->SetupViewport();
@@ -871,7 +871,6 @@ void PTAMWrapper::renderGrid(TooN::SE3<> camFromWorld)
 
 
 }
-*/
 
 TooN::Vector<3> PTAMWrapper::evalNavQue(unsigned int from, unsigned int to, bool* zCorrupted, bool* allCorrupted, float* out_start_pressure, float* out_end_pressure)
 {
