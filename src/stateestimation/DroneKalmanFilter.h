@@ -414,6 +414,11 @@ public:
 	// new ROS interface functions
 	void addPTAMObservation(TooN::Vector<6> trans, int time);
 	void addFakePTAMObservation(int time);
+	
+	
+	void addPosObservation(TooN::Vector<2> plan, int time);
+	void addFakePosObservation(int time);
+	
 	tum_ardrone::filter_state getPoseAt(ros::Time t, bool useControlGains = true);
 	TooN::Vector<10> getPoseAtAsVec(int timestamp, bool useControlGains = true);
 
