@@ -28,13 +28,11 @@
 #include "DroneKalmanFilter.h"
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
-#include "GLWindow2.h"
 #include "EstimationNode.h"
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <thread>
-#include <pangolin/pangolin.h>
 #include <iomanip>
 
 
@@ -44,9 +42,7 @@ pthread_mutex_t PTAMWrapper::shallowMapCS = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t PTAMWrapper::logScalePairs_CS = PTHREAD_MUTEX_INITIALIZER;
 
 
-PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde, const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
-               const bool bUseViewer):mSensor(sensor),mbReset(false),mbActivateLocalizationMode(false),
-        mbDeactivateLocalizationMode(false)
+PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde)
 {
 
 	filter = f;
@@ -78,74 +74,49 @@ PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde, const string
 
 	logfileScalePairs = 0;
 
+	/*const string strVocFile = "/home/kiran/catkin_ws/src/Vocabulary/ORBvoc.txt";
+	const string strSettingsFile = "/home/kiran/catkin_ws/src/ardrone_navmap/camcalib/ardrone2_default.yaml";
 
-    // Output welcome message
-    cout << endl <<
-    "ORB-SLAM2 Copyright (C) 2014-2016 Raul Mur-Artal, University of Zaragoza." << endl <<
-    "This program comes with ABSOLUTELY NO WARRANTY;" << endl  <<
-    "This is free software, and you are welcome to redistribute it" << endl <<
-    "under certain conditions. See LICENSE.txt." << endl << endl;
-
-    cout << "Input sensor was set to: ";
-
-    if(mSensor==MONOCULAR)
-        cout << "Monocular" << endl;
-    else if(mSensor==STEREO)
-        cout << "Stereo" << endl;
-    else if(mSensor==RGBD)
-        cout << "RGB-D" << endl;
-
-    //Check settings file
-    cv::FileStorage fsSettings(strSettingsFile.c_str(), cv::FileStorage::READ);
-    if(!fsSettings.isOpened())
-    {
-       cerr << "Failed to open settings file at: " << strSettingsFile << endl;
-       exit(-1);
-    }
+	
 
 
-    //Load ORB Vocabulary
-    cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
 
-    mpVocabulary = new ORB_SLAM2::ORBVocabulary();
+    mpVocabulary = new ORB_SLAM::ORBVocabulary();
     bool bVocLoad = mpVocabulary->loadFromTextFile(strVocFile);
-    if(!bVocLoad)
+
+     if(!bVocLoad)
     {
-        cerr << "Wrong path to vocabulary. " << endl;
+        cerr << "Wrong path to vocabulary. Path must be absolut or relative to ORB_SLAM package directory." << endl;
         cerr << "Falied to open at: " << strVocFile << endl;
+        ros::shutdown();
         exit(-1);
     }
+
     cout << "Vocabulary loaded!" << endl << endl;
 
-    //Create KeyFrame Database
-    mpKeyFrameDatabase = new ORB_SLAM2::KeyFrameDatabase(*mpVocabulary);
+    mpWorld = new ORB_SLAM::Map();
+    mpKeyFrameDatabase = new ORB_SLAM::KeyFrameDatabase(*mpVocabulary);
 
-    //Create the Map
-    mpMap = new ORB_SLAM2::Map();
+    mpFramePub = new ORB_SLAM::FramePublisher();
+    mpFramePub->SetMap(mpWorld);
 
-    //Create Drawers. These are used by the Viewer
-    mpFrameDrawer = new ORB_SLAM2::FrameDrawer(mpMap);
-    mpMapDrawer = new ORB_SLAM2::MapDrawer(mpMap, strSettingsFile);
+    //Create Map Publisher for Rviz
+    mpMapPub = new ORB_SLAM::MapPublisher(mpWorld);
 
-    //Initialize the Tracking thread
-    //(it will live in the main thread of execution, the one that called this constructor)
-    mpTracker = new ORB_SLAM2::Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
-                             mpMap, mpKeyFrameDatabase, strSettingsFile, mSensor);
+    
+    mptTracking = new boost::thread(&ORB_SLAM::Tracking::Run,mpTracker);
 
-    //Initialize the Local Mapping thread and launch
-    mpLocalMapper = new ORB_SLAM2::LocalMapping(mpMap, mSensor==MONOCULAR);
-    mptLocalMapping = new thread(&ORB_SLAM2::LocalMapping::Run,mpLocalMapper);
+    mpTracker->SetKeyFrameDatabase(mpKeyFrameDatabase);
 
-    //Initialize the Loop Closing thread and launch
-    mpLoopCloser = new ORB_SLAM2::LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
-    mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
+    //Initialize the Local Mapping Thread and launch
+    mpLocalMapper = new ORB_SLAM::LocalMapping(mpWorld);
 
-    //Initialize the Viewer thread and launch
-    mpViewer = new ORB_SLAM2::Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile);
-    if(bUseViewer)
-        mptViewer = new thread(&Viewer::Run, mpViewer);
+    //Initialize the Loop Closing Thread and launch
+    mpLoopCloser = new ORB_SLAM::LoopClosing(mpWorld, mpKeyFrameDatabase, mpVocabulary);
 
-    mpTracker->SetViewer(mpViewer);
+    mptLocalMapping = new boost::thread(&ORB_SLAM::LocalMapping::Run,mpLocalMapper);
+
+    mptLoopClosing = new boost::thread(&ORB_SLAM::LoopClosing::Run, mpLoopCloser);
 
     //Set pointers between threads
     mpTracker->SetLocalMapper(mpLocalMapper);
@@ -155,24 +126,16 @@ PTAMWrapper::PTAMWrapper(DroneKalmanFilter* f, EstimationNode* nde, const string
     mpLocalMapper->SetLoopCloser(mpLoopCloser);
 
     mpLoopCloser->SetTracker(mpTracker);
-    mpLoopCloser->SetLocalMapper(mpLocalMapper);
+    mpLoopCloser->SetLocalMapper(mpLocalMapper);*/
 }
 
 
 
 void PTAMWrapper::ResetInternal()
 {
-	mimFrameBW.resize(CVD::ImageRef(frameWidth, frameHeight));
-	mimFrameBW_workingCopy.resize(CVD::ImageRef(frameWidth, frameHeight));
+	//mimFrameBW.resize(CVD::ImageRef(frameWidth, frameHeight));
+	//mimFrameBW_workingCopy.resize(CVD::ImageRef(frameWidth, frameHeight));
 
-
-	//if(mpMapMaker != 0) delete mpMapMaker;
-	if(mpMap != 0) delete mpMap;
-	if(mpMapDrawer != 0) delete mpMapDrawer;
-	if(mpTracker != 0) delete mpTracker;
-	if(mpLocalMapper != 0) delete mpLocalMapper;
-	if(mpLoopCloser != 0) delete mpLoopCloser;
-	if(mpViewer != 0) delete mpViewer;
 
 
 	// read camera calibration (yes, its done here)
@@ -197,7 +160,7 @@ void PTAMWrapper::ResetInternal()
 	std::cout<< "Set Camera Paramerer to: " << camPar[0] << " " << camPar[1] << " " << camPar[2] << " " << camPar[3] << " " << camPar[4] << std::endl;
 
 
-	mbReset = true;
+	//mbReset = true;
 
 	//mpCamera = new ATANCamera(camPar);
 	//mpMapMaker = new MapMaker(*mpMap, *mpCamera);
@@ -205,13 +168,7 @@ void PTAMWrapper::ResetInternal()
 	 //Load ORB Vocabulary
 
 
-    /*if(mSensor!=MONOCULAR)
-    {
-        cerr << "ERROR: you called TrackMonocular but input sensor was not set to Monocular." << endl;
-        exit(-1);
-    }
-
-    // Check mode change
+   /*     // Check mode change
     {
         unique_lock<mutex> lock(mMutexMode);
         if(mbActivateLocalizationMode)
@@ -281,15 +238,17 @@ void PTAMWrapper::ResetInternal()
 
 PTAMWrapper::~PTAMWrapper(void)
 {
-	//if(mpCamera != 0) delete mpCamera;
+	/*if(mpCamera != 0) delete mpCamera;
 	if(mpMap != 0) delete mpMap;
-	if(mpMapDrawer != 0) delete mpMapDrawer;
 	if(mpTracker != 0) delete mpTracker;
 	if(predConvert != 0) delete predConvert;
 	if(predIMUOnlyForScale != 0) delete predIMUOnlyForScale;
 	if(imuOnlyPred != 0) delete imuOnlyPred;
+	*/
+
 
 }
+
 
 
 void PTAMWrapper::startSystem()
@@ -319,17 +278,18 @@ void PTAMWrapper::run()
 		usleep(100000);	// sleep 100ms
 
 	// read image height and width
-	frameWidth = mimFrameBW.size().x;
-	frameHeight = mimFrameBW.size().y;
+	//frameWidth = mimFrameBW.size().width;
+	//frameHeight = mimFrameBW.size().height;
 
 	ResetInternal();
 
 
-	snprintf(charBuf,200,"Video resolution: %d x %d",frameWidth,frameHeight);
-	ROS_INFO(charBuf);
+	//snprintf(charBuf,200,"Video resolution: %d x %d",frameWidth,frameHeight);
+
+	//ROS_INFO("Video resolution: %d x %d",frameWidth,frameHeight);
 	node->publishCommand(std::string("u l ")+charBuf);
 
-	// create window
+	/* create window
     myGLWindow = new GLWindow2(CVD::ImageRef(frameWidth,frameHeight), "PTAM Drone Camera Feed", this);
 	myGLWindow->set_title("PTAM Drone Camera Feed");
 
@@ -337,7 +297,7 @@ void PTAMWrapper::run()
 	if(frameWidth < 640)
 		desiredWindowSize = CVD::ImageRef(frameWidth*2,frameHeight*2);
 	else
-		desiredWindowSize = CVD::ImageRef(frameWidth,frameHeight);
+		desiredWindowSize = CVD::ImageRef(frameWidth,frameHeight);*/
 
 
 	boost::unique_lock<boost::mutex> lock(new_frame_signal_mutex);
@@ -349,10 +309,10 @@ void PTAMWrapper::run()
 			newImageAvailable = false;
 
 			// copy to working copy
-			mimFrameBW_workingCopy.copy_from(mimFrameBW);
-			mimFrameTime_workingCopy = mimFrameTime;
-			mimFrameSEQ_workingCopy = mimFrameSEQ;
-			mimFrameTimeRos_workingCopy = mimFrameTimeRos;
+			//mimFrameBW_workingCopy = mimFrameBW.clone();
+			//mimFrameTime_workingCopy = mimFrameTime;
+			//mimFrameSEQ_workingCopy = mimFrameSEQ;
+			//mimFrameTimeRos_workingCopy = mimFrameTimeRos;
 
 			// release lock and do the work-intensive stuff.....
 			lock.unlock();
@@ -360,11 +320,11 @@ void PTAMWrapper::run()
 			HandleFrame();
 
 
-			if(changeSizeNextRender)
+		/*	if(changeSizeNextRender)
 			{
 				myGLWindow->set_size(desiredWindowSize);
 				changeSizeNextRender = false;
-			}
+			}*/
 
 			// get lock again
 			lock.lock();
@@ -374,7 +334,7 @@ void PTAMWrapper::run()
 	}
 
 	lock.unlock();
-	delete myGLWindow;
+	//delete myGLWindow;
 }
 
 // called every time a new frame is available.
@@ -399,14 +359,14 @@ void PTAMWrapper::HandleFrame()
 	// make filter thread-safe.
 	// --------------------------- ROLL FORWARD TIL FRAME. This is ONLY done here. ---------------------------
 	pthread_mutex_lock( &filter->filter_CS );
-	//filter->predictUpTo(mimFrameTime,true, true);
+	//*commented by originator filter->predictUpTo(mimFrameTime,true, true);
 	TooN::Vector<10> filterPosePrePTAM = filter->getPoseAtAsVec(mimFrameTime_workingCopy-filter->delayVideo,true);
 	pthread_mutex_unlock( &filter->filter_CS );
 
-	// ------------------------ do PTAM -------------------------
+	/* ------------------------ do PTAM -------------------------
 	myGLWindow->SetupViewport();
 	myGLWindow->SetupVideoOrtho();
-	myGLWindow->SetupVideoRasterPosAndZoom();
+	myGLWindow->SetupVideoRasterPosAndZoom();*/
 
 
 
@@ -418,24 +378,42 @@ void PTAMWrapper::HandleFrame()
 	TooN::SE3<> PTAMPoseGuessSE3 = predConvert->droneToFrontNT * predConvert->globaltoDrone;
 
 
-	cv::Mat iTcw = toSE3(PTAMPoseGuessSE3);
-	// set
-	mpTracker->setPredictedCamFromW(iTcw);
+	//toSE3(PTAMPoseGuessSE3);
+
+	//** set
+	//mpTracker->setPredictedCamFromW(iTcw);
 	//mpTracker->setLastFrameLost((isGoodCount < -10), (videoFrameID%2 != 0));
 	//mpTracker->setLastFrameLost((isGoodCount < -20), (mimFrameSEQ_workingCopy%3 == 0));
 
 	// track
 	ros::Time startedPTAM = ros::Time::now();
-	cv::Mat Tcw = mpTracker->GrabImageMonocular(mimFrameBW_workingCopy, mimFrameTime_workingCopy);
-	cv::Mat Tc2w = mpTracker->GetPose();
-	TooN::SE3<> PTAMResultSE3 = Tc2w;
+	//cv::Mat Tcw = mpTracker->GrabImage(mimFrameBW_workingCopy, mimFrameTime_workingCopy);
+	//mpTracker->GrabImage(mimFrameBW);
+
+	//TooN::SE3<double> PTAMResultSE3 = Mattose3(Tcw);
+
+
+	/*TooN::Matrix<3,3> mat;
+
+	for(int i=0;i<3;i++){
+		for(int j=0;j<3;j++){
+			mat(i,j) = Tcw.at<double>(i,j);
+		}
+	}
+	TooN::SO3<double> R = mat;
+
+
+    TooN::Vector<3> t = TooN::Data(Tcw.at<double>(0,3), Tcw.at<double>(1,3), Tcw.at<double>(2,3));
+
+    TooN::SE3<double> PTAMResultSE3 = TooN::SE3<double>(R,t);*/
 
 	//lastPTAMMessage = msg = mpTracker->GetMessageForUser();
 	ros::Duration timePTAM= ros::Time::now() - startedPTAM;
 
+
 	TooN::Vector<6> PTAMResultSE3TwistOrg = PTAMResultSE3.ln();
 
-	node->publishTf(Tcw, mimFrameTimeRos_workingCopy, mimFrameSEQ_workingCopy,"cam_front");
+	node->publishTf(PTAMResultSE3, mimFrameTimeRos_workingCopy, mimFrameSEQ_workingCopy,"cam_front");
 
 
 	// 1. multiply from left by frontToDroneNT.
@@ -449,12 +427,12 @@ void PTAMWrapper::HandleFrame()
 
 
 
-	// init failed?
-	if(mpTracker->lastStepResult == LOST)
+	/*() init failed?
+	if(mpTracker->mLastProcessedState == ORB_SLAM::Tracking::LOST)
 	{
 		ROS_INFO("initializing PTAM failed, resetting!");
 		resetPTAMRequested = true;
-	}
+	}*/
 
 
 
@@ -473,10 +451,10 @@ void PTAMWrapper::HandleFrame()
 		isGood = true;
 		isVeryGood = false;
 	}
-	else if(mpTracker->lastStepResult == SYSTEM_NOT_READY ||
-		mpTracker->lastStepResult == NO_IMAGES_YET || 
-		mpTracker->lastStepResult == NOT_INITIALIZED)
-		isGood = isVeryGood = false;
+	/*else if(mpTracker->mLastProcessedState == ORB_SLAM::Tracking::SYSTEM_NOT_READY ||
+		mpTracker->mLastProcessedState == ORB_SLAM::Tracking::NO_IMAGES_YET || 
+		mpTracker->mLastProcessedState == ORB_SLAM::Tracking::NOT_INITIALIZED)
+		isGood = isVeryGood = false;*/
 
 	else
 	{
@@ -498,7 +476,7 @@ void PTAMWrapper::HandleFrame()
 		if(diffs[3] > 20 || diffs[4] > 20)
 			isGood = false;
 
-		if(diffs[3] > 3 || diffs[4] > 3 || dodgy)
+		if(diffs[3] > 3 || diffs[4] > 3)
 			isVeryGood = false;
 	}
 
@@ -587,7 +565,7 @@ void PTAMWrapper::HandleFrame()
 				diffIMU.slice<0,2>() *= xyFactor; diffIMU[2] *= zFactor;
 
 				filter->updateScaleXYZ(diffPTAM, diffIMU, PTAMResult.slice<0,3>());
-				mpMapDrawer->currentScaleFactor = filter->getCurrentScales()[0];
+				//mpLocalMapper->currentScaleFactor(filter->getCurrentScales()[0]);
 			}
 			framesIncludedForScaleXYZ = -1;	// causing reset afterwards
 		}
@@ -614,25 +592,27 @@ void PTAMWrapper::HandleFrame()
 	}
 
 
-	// ----------------------------- Take KF? -----------------------------------
-	if(!mapLocked && isVeryGood && (forceKF || mpMap->KeyFramesInMap() < maxKF || maxKF <= 1))
+	/* ----------------------------- Take KF? -----------------------------------
+	if(!mapLocked && isVeryGood && (forceKF || mpWorld->KeyFramesInMap() < maxKF || maxKF <= 1))
 	{
 		mpTracker->CreateNewKeyFrame();
 		forceKF = false;
-	}
+	}*/
 
-	// ---------------- save PTAM status for KI --------------------------------
-	if(mpTracker->mLastProcessedState == SYSTEM_NOT_READY)
+	/* ---------------- save PTAM status for KI --------------------------------
+	if(mpTracker->mLastProcessedState == ORB_SLAM::Tracking::SYSTEM_NOT_READY)
 		PTAMStatus = PTAM_IDLE;
 
-	else if(mpTracker->mLastProcessedState == NOT_INITIALIZED)
+	else if(mpTracker->mLastProcessedState == ORB_SLAM::Tracking::NOT_INITIALIZED)
 		PTAMStatus = PTAM_INITIALIZING;
 
-	else if(mpTracker->mLastProcessedState == OK)
+	else if(mpTracker->mLastProcessedState == ORB_SLAM::Tracking::WORKING)
 		PTAMStatus = PTAM_BEST;
 
-	else if(mpTracker->mLastProcessedState == LOST)
-		PTAMStatus = PTAM_LOST;
+	else if(mpTracker->mLastProcessedState == ORB_SLAM::Tracking::LOST)
+		PTAMStatus = PTAM_LOST;*/
+
+	PTAMStatus = PTAM_BEST;
 
 	 
 	// ----------------------------- update shallow map --------------------------
@@ -641,19 +621,39 @@ void PTAMWrapper::HandleFrame()
 		pthread_mutex_lock(&shallowMapCS);
 		mapPointsTransformed.clear();
 		keyFramesTransformed.clear();
-		for(unsigned int i=0;i<mpMap->KeyFramesInMap();i++)
+		cv::Mat keyframe_pose;
+		TooN::Matrix<3,3> mat;
+		TooN::SO3<double> R;
+		TooN::Vector<3> t;
+		for(unsigned int i=0;i<keyframe.len();i++)
 		{
-			predConvert->setPosSE3_globalToDrone(predConvert->frontToDroneNT * mpMap->vpKeyFrames[i]->se3CfromW);
+			keyframe_pose = keyframe[i];
+
+			for(int i=0;i<3;i++){
+				for(int j=0;j<3;j++){
+				mat(i,j) = keyframe_pose.at<double>(i,j);
+				}
+			}
+			R = mat;
+			t = TooN::Data(keyframe_pose.at<double>(0,3), keyframe_pose.at<double>(1,3), keyframe_pose.at<double>(2,3));
+
+    		//TooN::SE3<double> ResultSE3 = TooN::SE3<double>(R,t);
+
+			predConvert->setPosSE3_globalToDrone(predConvert->frontToDroneNT * TooN::SE3<double>(R,t));
 			TooN::Vector<6> CamPos = TooN::makeVector(predConvert->x, predConvert->y, predConvert->z, predConvert->roll, predConvert->pitch, predConvert->yaw);
 			CamPos = filter->transformPTAMObservation(CamPos);
 			predConvert->setPosRPY(CamPos[0], CamPos[1], CamPos[2], CamPos[3], CamPos[4], CamPos[5]);
 			keyFramesTransformed.push_back(predConvert->droneToGlobal);
 		}
+
+
 		TooN::Vector<3> PTAMScales = filter->getCurrentScales();
 		TooN::Vector<3> PTAMOffsets = filter->getCurrentOffsets().slice<0,3>();
-		for(unsigned int i=0;i<mpMap->MapPointsInMap();i++)
+		for(unsigned int i=0;i<point_pos.len();i++)
 		{
-			TooN::Vector<3> pos = (mpMap->GetAllMapPoints())[i]->GetWorldPos();
+			//TooN::Vector<3> pos = Mattoworld((mpWorld->GetAllMapPoints())[i]->GetWorldPos());
+			//TooN::Vector<3> pos = TooN::Data(((mpWorld->GetAllMapPoints())[i]->GetWorldPos()).at<float>(0), ((mpWorld->GetAllMapPoints())[i]->GetWorldPos()).at<float>(1), ((mpWorld->GetAllMapPoints())[i]->GetWorldPos()).at<float>(2));
+			TooN::Vector<3> pos = TooN::Data(point_pos[i][0], point_pos[i][1], point_pos[i][2])
 			pos[0] *= PTAMScales[0];
 			pos[1] *= PTAMScales[1];
 			pos[2] *= PTAMScales[2];
@@ -706,8 +706,7 @@ void PTAMWrapper::HandleFrame()
 
 	msg += charBuf;
 
-	if()
-	{
+	
 		if(drawUI == UI_DEBUG)
 		{
 			snprintf(charBuf,1000,"\nPTAM Diffs:              ");
@@ -735,7 +734,6 @@ void PTAMWrapper::HandleFrame()
 			//snprintf(charBuf+24,800, "MetricDist: %.3f",mpMapMaker->lastMetricDist);
 			msg += charBuf;
 		}
-	}
 
 	if(drawUI != UI_NONE)
 	{
@@ -810,8 +808,8 @@ void PTAMWrapper::HandleFrame()
 		pthread_mutex_unlock(&(node->logPTAM_CS));
 	}
 
-	myGLWindow->swap_buffers();
-	myGLWindow->HandlePendingEvents();
+	/*myGLWindow->swap_buffers();
+	myGLWindow->HandlePendingEvents();*/
 
 }
 
@@ -823,7 +821,7 @@ void PTAMWrapper::renderGrid(TooN::SE3<> camFromWorld)
 	myGLWindow->SetupVideoOrtho();
 	myGLWindow->SetupVideoRasterPosAndZoom();
 
-	camFromWorld.get_translation() *= 1;
+	camFrommpWorld->get_translation() *= 1;
 
 	// The colour of the ref grid shows if the coarse stage of tracking was used
 	// (it's turned off when the camera is sitting still to reduce jitter.)
@@ -832,11 +830,11 @@ void PTAMWrapper::renderGrid(TooN::SE3<> camFromWorld)
 	// The grid is projected manually, i.e. GL receives projected 2D coords to draw.
 	int nHalfCells = 5;
 	int nTot = nHalfCells * 2 + 1;
+	Vector<3> v3;
 	CVD::Image<Vector<2> >  imVertices(CVD::ImageRef(nTot,nTot));
 	for(int i=0; i<nTot; i++)
 		for(int j=0; j<nTot; j++)
 		{
-			Vector<3> v3;
 			v3[0] = (i - nHalfCells) * 1;
 			v3[1] = (j - nHalfCells) * 1;
 			v3[2] = 0.0;
@@ -871,6 +869,7 @@ void PTAMWrapper::renderGrid(TooN::SE3<> camFromWorld)
 
 
 }
+
 
 TooN::Vector<3> PTAMWrapper::evalNavQue(unsigned int from, unsigned int to, bool* zCorrupted, bool* allCorrupted, float* out_start_pressure, float* out_end_pressure)
 {
@@ -1005,32 +1004,76 @@ void PTAMWrapper::newNavdata(ardrone_autonomy::Navdata* nav)
 	imuOnlyPred->predictOneStep(&lastNavinfoReceived);
 }
 
-void PTAMWrapper::newImage(sensor_msgs::ImageConstPtr img)
+void PTAMWrapper::newImage(tf::StampedTransform pose, visualization_msgs::Marker map)
 {
 
 	// convert to CVImage
-	cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::MONO8);
+	//cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::MONO8);
 
 
 	boost::unique_lock<boost::mutex> lock(new_frame_signal_mutex);
 
+	TooN::Matrix<3,3> mat;
+	TooN::Matrix<3,3> mat_frame;
+
+	for(int i=0;i<3;i++){
+		for(int j=0;j<3;j++){
+			mat(i,j) = pose.M[i,j];
+		}
+	}
+	TooN::SO3<double> R = mat;
+
+
+    TooN::Vector<3> t = TooN::Data(pose.V[0], pose.V[1], pose.V[2]);
+
+    PTAMResultSE3 = TooN::SE3<double>(R,t);
 	// copy to internal image, convert to bw, set flag.
-	if(ros::Time::now() - img->header.stamp > ros::Duration(30.0))
+	if(ros::Time::now() - pose.stamp > ros::Duration(30.0))
 		mimFrameTimeRos = (ros::Time::now()-ros::Duration(0.001));
 	else
-		mimFrameTimeRos = (img->header.stamp);
+
+		mimFrameTimeRos = (pose.stamp);
 
 	mimFrameTime = getMS(mimFrameTimeRos);
+	mimFrameSEQ = pose.frame_id;
 
-	//mimFrameTime = getMS(img->header.stamp);
-	mimFrameSEQ = img->header.seq;
+	//Map filling
+	for(int i=0;i<points.len;i++){
+		if(map.header == 'point'){
+		pos[i][0] = map.x;
+		pos[i][1] = map.y;
+		pos[i][2] = map.z;
+	}
+	}
+	
+
+	else if(map.header == 'keyframe'){
+		for(int i=0;i<size(keyframes);i++){
+
+			for(int i=0;i<3;i++){
+				for(int j=0;j<3;j++){
+					mat(i,j) = pose.M[i,j];
+		}
+	}
+	TooN::SO3<double> R_frame = mat_frame;
+
+
+    TooN::Vector<3> t = TooN::Data(pose.V[0], pose.V[1], pose.V[2]);
+
+    PTAMResultSE3 = TooN::SE3<double>(R,t);
+		}
+
+	}
+
+	//memcpy(mimFrameBW.data(),cv_ptr->image.data,img->width * img->height);
+	//mimFrameBW = cv_ptr->image;
 
 	// copy to mimFrame.
 	// TODO: make this threadsafe (save pointer only and copy in HandleFrame)
-	if(mimFrameBW.size().x != img->width || mimFrameBW.size().y != img->height)
-		mimFrameBW.resize(CVD::ImageRef(img->width, img->height));
-
-	memcpy(mimFrameBW.data(),cv_ptr->image.data,img->width * img->height);
+	//if(mimFrameBW.size().width != img->width || mimFrameBW.size().height != img->height)
+		//cv::resize(mimFrameBW, mimFrameBW, cvSize(img->width, img->height));
+	//cv::imshow("image", mimFrameBW);
+	
 	newImageAvailable = true;
 
 	lock.unlock();
@@ -1174,18 +1217,18 @@ bool PTAMWrapper::handleCommand(std::string s)
 
 void PTAMWrapper::on_mouse_down(CVD::ImageRef where, int state, int button)
 {
-	double x = 4*(where.x/(double)this->myGLWindow->size().x - 0.5);
-	double y = -4*(where.y/(double)this->myGLWindow->size().y - 0.5);
+	//double x = 4*(where.x/(double)this->myGLWindow->size().x - 0.5);
+	//double y = -4*(where.y/(double)this->myGLWindow->size().y - 0.5);
 	char bf[100];
 
 
 	node->publishCommand("c clearCommands");
 	node->publishCommand("c lockScaleFP");
 
-	if(button == 1)
+	/*if(button == 1)
 		snprintf(bf,100,"c moveByRel %.3f %.3f 0 0",x,y);
 	else
-		snprintf(bf,100,"c moveByRel 0 0 %.3f %.3f",y,x*45);
+		snprintf(bf,100,"c moveByRel 0 0 %.3f %.3f",y,x*45);*/
 
-	node->publishCommand(bf);
+	//node->publishCommand(bf);
 }

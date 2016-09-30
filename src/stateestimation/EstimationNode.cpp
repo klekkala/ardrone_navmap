@@ -22,6 +22,8 @@
 #include "EstimationNode.h"
 #include "ros/ros.h"
 #include "ros/package.h"
+#include <message_filters/subscriber.h>
+#include <message_filters/time_synchronizer.h>
 #include "geometry_msgs/Twist.h"
 #include "sensor_msgs/Image.h"
 #include "tf/tfMessage.h"
@@ -51,12 +53,14 @@ pthread_mutex_t EstimationNode::logPTAM_CS = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t EstimationNode::logFilter_CS = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t EstimationNode::logPTAMRaw_CS = PTHREAD_MUTEX_INITIALIZER;
 
-EstimationNode::EstimationNode(const string &strVocFile, const string &strSettingsFile)
+EstimationNode::EstimationNode()
 {
     navdata_channel = nh_.resolveName("ardrone/navdata");
     control_channel = nh_.resolveName("cmd_vel");
     output_channel = nh_.resolveName("ardrone/predictedPose");
-    video_channel = nh_.resolveName("ardrone/image_raw");
+    us_channel = nh_.resolveName("us/data");
+    pose_channel = nh_.resolveName("/ORB_SLAM/tf");
+    map_channel = nh_.resolveName("ORB_SLAM/Map");
     command_channel = nh_.resolveName("tum_ardrone/com");
 	packagePath = ros::package::getPath("tum_ardrone");
 
@@ -84,7 +88,15 @@ EstimationNode::EstimationNode(const string &strVocFile, const string &strSettin
 
 	navdata_sub       = nh_.subscribe(navdata_channel, 10, &EstimationNode::navdataCb, this);
 	vel_sub          = nh_.subscribe(control_channel,10, &EstimationNode::velCb, this);
-	vid_sub          = nh_.subscribe(video_channel,10, &EstimationNode::vidCb, this);
+	us_sub          = nh_.subscribe(us_channel,10, &EstimationNode::usCb, this);
+
+
+	message_filters::Subscriber<tf::StampedTransform> pose_sub(nh_, pose_channel, 10);
+  	message_filters::Subscriber<visualization_msgs::Marker> map_sub(nh_, map_channel, 10);
+
+  	TimeSynchronizer<tf::StampedTransform, visualization_msgs::Marker> sync(pose_sub, map_sub, 10);
+  	sync.registerCallback(boost::bind(&slam, _1, _2));
+
 
 	dronepose_pub	   = nh_.advertise<tum_ardrone::filter_state>(output_channel,1);
 
@@ -101,7 +113,7 @@ EstimationNode::EstimationNode(const string &strVocFile, const string &strSettin
 	droneRosTSOffset = 0;
 	lastNavStamp = ros::Time(0);
 	filter = new DroneKalmanFilter(this);
-	ptamWrapper = new PTAMWrapper(filter, this, &strVocFile, &strSettingsFile, ORB_SLAM2::System::MONOCULAR, true);
+	ptamWrapper = new PTAMWrapper(filter, this);
 	mapView = new MapView(filter, ptamWrapper, this);
 	arDroneVersion = 0;
 	//memset(&lastNavdataReceived,0,sizeof(ardrone_autonomy::Navdata));
@@ -213,11 +225,75 @@ void EstimationNode::velCb(const geometry_msgs::TwistConstPtr velPtr)
 	pthread_mutex_unlock( &filter->filter_CS );
 }
 
-void EstimationNode::vidCb(const sensor_msgs::ImageConstPtr img)
+void EstimationNode::usCb(const us_msgs::usPtr usPtr)
+{
+	lastUSdataReceived = *usPtr;
+	if(ros::Time::now() - lastUSdataReceived.header.stamp > ros::Duration(30.0))
+		lastUSdataReceived.header.stamp = ros::Time::now();
+
+
+	// darn ROS really messes up timestamps.
+	// they should arrive every 5ms, with occasionally dropped packages.
+	// instead, they arrive with gaps of up to 30ms, and then 6 packages with the same timestamp.
+	// so: this procedure "smoothes out" received package timestamps, shifting their timestamp by max. 20ms to better fit the order.
+	long rosTS = getMS(lastNavdataReceived.header.stamp);
+	long droneTS = navdataPtr->tm / 1000;
+
+	if(lastDroneTS == 0) lastDroneTS = droneTS;
+
+	if((droneTS+1000000) < lastDroneTS)
+	{
+		droneRosTSOffset = rosTS - droneTS;	// timestamp-overflow, reset running average.
+		ROS_WARN("Drone Navdata timestamp overflow! (should happen epprox every 30min, while drone switched on)");
+	}
+	else
+		droneRosTSOffset = 0.9 * droneRosTSOffset + 0.1*(rosTS - droneTS);
+
+	long rosTSNew =droneTS + droneRosTSOffset;	// this should be the correct timestamp.
+	long TSDiff = std::min(100l,std::max(-100l,rosTSNew-rosTS));	// never change by more than 100ms.
+	lastUSdataReceived.header.stamp += ros::Duration(TSDiff/1000.0);	// change!
+	lastRosTS = rosTS;
+	lastDroneTS = droneTS;
+
+
+
+	// push back in filter queue.
+	pthread_mutex_lock( &filter->filter_CS );
+	filter->usQueue->push_back(lastUSReceived);
+	pthread_mutex_unlock( &filter->filter_CS );
+
+
+	// give to PTAM (for scale estimation)
+	ptamWrapper->newNavdata(&lastNavdataReceived);
+
+
+	// save last timestamp
+	if(lastNavStamp != ros::Time(0) && (lastNavdataReceived.header.stamp - lastNavStamp > ros::Duration(0.1)))
+		std::cout << (lastNavdataReceived.header.stamp - lastNavStamp).toSec() << "s between two consecutive navinfos. This system requires Navinfo at 200Hz. If this error persists, set drone to debug mode and change publish freq in ardrone_autonomy" << std::endl;
+	lastNavStamp = lastNavdataReceived.header.stamp;
+
+
+}
+
+/******
+void EstimationNode::poseCb(const tf::StampedTransform pose)
+{
+	// give to PTAM
+	ptamWrapper->newImage(pose);
+}
+
+void EstimationNode::mapCb(const visualization_msgs::Marker map)
 {
 	// give to PTAM
 	ptamWrapper->newImage(img);
 }
+********/
+
+void EstimationNode::slamCb(const tf::StampedTransform pose, const visualization_msgs::Marker map)
+{
+  ptamWrapper->newImage(pose, map);
+}
+
 
 void EstimationNode::comCb(const std_msgs::StringConstPtr str)
 {
@@ -322,7 +398,7 @@ void EstimationNode::dynConfCb(tum_ardrone::StateestimationParamsConfig &config,
 	filter->allSyncLocked = config.PTAMSyncLock;
 
 
-	ptamWrapper->setPTAMPars(config.PTAMMinKFTimeDiff, config.PTAMMinKFWiggleDist, config.PTAMMinKFDist);
+	//ptamWrapper->setPTAMPars(config.PTAMMinKFTimeDiff, config.PTAMMinKFWiggleDist, config.PTAMMinKFDist);
 
 
 	filter->c1 = config.c1;

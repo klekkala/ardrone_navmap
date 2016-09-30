@@ -49,13 +49,13 @@ class PTAMWrapper;
 
 struct EstimationNode
 {
-
+us_channel
 
 private:
 	// comm with drone
 	ros::Subscriber navdata_sub; // drone navdata
 	ros::Subscriber vel_sub; // to co-read contro commands sent from other thread
-	ros::Subscriber vid_sub;
+	ros::Subscriber us_sub;
 	ros::Time lastNavStamp;
 
 
@@ -83,7 +83,7 @@ private:
 	std::string navdata_channel;
 	std::string control_channel;
 	std::string output_channel;
-	std::string video_channel;
+	std::string us_channel;
 	std::string command_channel;
 
 
@@ -104,14 +104,14 @@ public:
 	MapView* mapView;
 	std::string packagePath;
 
-	EstimationNode(const string &strVocFile, const string &strSettingsFile);
+	EstimationNode();
 	~EstimationNode();
 
 
 	// ROS message callbacks
 	void navdataCb(const ardrone_autonomy::NavdataConstPtr navdataPtr);
 	void velCb(const geometry_msgs::TwistConstPtr velPtr);
-	void vidCb(const sensor_msgs::ImageConstPtr img);
+	void usCb(const us_msgs::usPtr usPtr);
 	void comCb(const std_msgs::StringConstPtr str);
 	void dynConfCb(tum_ardrone::StateestimationParamsConfig &config, uint32_t level);
 

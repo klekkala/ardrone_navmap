@@ -36,32 +36,19 @@
 #include "cvd/byte.h"
 #include "MouseKeyHandler.h"
 #include "boost/thread.hpp"
-#include "ORB_SLAM2/include/Tracking.h"
-#include "ORB_SLAM2/include/FrameDrawer.h"
-#include "ORB_SLAM2/include/MapDrawer.h"
-#include "ORB_SLAM2/include/Map.h"
-#include "ORB_SLAM2/include/LocalMapping.h"
-#include "ORB_SLAM2/include/LoopClosing.h"
-#include "ORB_SLAM2/include/KeyFrameDatabase.h"
-#include "ORB_SLAM2/include/ORBVocabulary.h"
-#include "ORB_SLAM2/include/Viewer.h"
+#include "ORB_SLAM/src/Tracking.h"
+#include "ORB_SLAM/src/FramePublisher.h"
+#include "ORB_SLAM/src/MapPublisher.h"
+#include "ORB_SLAM/src/Map.h"
+#include "ORB_SLAM/src/LocalMapping.h"
+#include "ORB_SLAM/src/LoopClosing.h"
+#include "ORB_SLAM/src/KeyFrameDatabase.h"
+#include "ORB_SLAM/src/ORBVocabulary.h"
 
 class Predictor;
 class DroneKalmanFilter;
 class DroneFlightModule;
 class EstimationNode;
-
-namespace ORB_SLAM2
-{
-
-class Viewer;
-class FrameDrawer;
-class Map;
-class Tracking;
-class LocalMapping;
-class LoopClosing;
-
-}
 
 typedef TooN::Vector<3> tvec3;
 typedef TooN::SE3<> tse3;
@@ -73,62 +60,6 @@ typedef TooN::SE3<> tse3;
 
 class PTAMWrapper : private CVD::Thread, private MouseKeyHandler
 {
-
-
-public:
-    // Input sensor
-    enum eSensor{
-        MONOCULAR=0,
-        STEREO=1,
-        RGBD=2
-    };
-
-	PTAMWrapper(DroneKalmanFilter* dkf, EstimationNode* nde, const string &strVocFile, const string &strSettingsFile, const eSensor sensor, const bool bUseViewer = true);
-	~PTAMWrapper(void);
-
-public:
-	// ROS exclusive: called by external thread if a new image/navdata is received.
-	// takes care of sync etc.
-	void newImage(sensor_msgs::ImageConstPtr img);
-	void newNavdata(ardrone_autonomy::Navdata* nav);
-	bool newImageAvailable;
-	void setPTAMPars(double minKFTimeDist, double minKFWiggleDist, double minKFDist);
-
-	bool handleCommand(std::string s);
-	bool mapLocked;
-	int maxKF;
-	static pthread_mutex_t navInfoQueueCS; //pthread_mutex_lock( &cs_mutex );
-	static pthread_mutex_t shallowMapCS; //pthread_mutex_lock( &cs_mutex );
-
-	// Event handling routines.
-	// get called by the myGLWindow on respective event.
-	virtual void on_key_down(int key);
-	//virtual void on_mouse_move(CVD::ImageRef where, int state);
-	virtual void on_mouse_down(CVD::ImageRef where, int state, int button);
-	//virtual void on_event(int event);
-	
-	// resets PTAM tracking
-	inline void Reset() {resetPTAMRequested = true;};
-
-
-	// start and stop system and respective thread.
-	void startSystem();
-	void stopSystem();
-
-
-
-	enum {PTAM_IDLE = 0, PTAM_INITIALIZING = 1, PTAM_LOST = 2, PTAM_GOOD = 3, PTAM_BEST = 4, PTAM_TOOKKF = 5, PTAM_FALSEPOSITIVE = 6} PTAMStatus;
-	TooN::SE3<> lastPTAMResultRaw;
-	std::string lastPTAMMessage;
-
-	// for map rendering: shallow clone
-	std::vector<tvec3> mapPointsTransformed;
-	std::vector<tse3> keyFramesTransformed;
-
-	ardrone_autonomy::Navdata lastNavinfoReceived;
-
-	int PTAMInitializedClock;
-
 
 private:
 	// base window
@@ -152,8 +83,11 @@ private:
 	char charBuf[1000];
 	std::string msg;
 
-	CVD::Image<CVD::byte> mimFrameBW;
-	CVD::Image<CVD::byte> mimFrameBW_workingCopy;
+	TooN::SE3<double> PTAMResultSE3;
+	TooN::Vector<3> pos;
+	TooN::SE3<double> keyframe;
+	//cv::Mat mimFrameBW;
+	cv::Mat mimFrameBW_workingCopy;
 	int mimFrameTime;
 	int mimFrameTime_workingCopy;
 	unsigned int mimFrameSEQ;
@@ -162,56 +96,29 @@ private:
 	ros::Time mimFrameTimeRos_workingCopy;
 	int frameWidth, frameHeight;
 
+	ORB_SLAM::FramePublisher* mpFramePub;
 
-	// Map is in my global Coordinate system. keyframes give the front-cam-position, i.e.
-	// CFromW is "GlobalToFront". this is achieved by aligning the global coordinate systems in the very beginning.
-	 
-	// Input sensor
-    eSensor mSensor;
-    
-	// ORB vocabulary used for place recognition and feature matching.
-    ORB_SLAM2::ORBVocabulary* mpVocabulary;
+   	ORB_SLAM::ORBVocabulary* mpVocabulary;
 
-    // KeyFrame database for place recognition (relocalization and loop detection).
-    ORB_SLAM2::KeyFrameDatabase* mpKeyFrameDatabase;
+    //Create KeyFrame Database
+    ORB_SLAM::KeyFrameDatabase* mpKeyFrameDatabase;
 
-    // Map structure that stores the pointers to all KeyFrames and MapPoints.
-    ORB_SLAM2::Map* mpMap;
+    //Create the map
+    ORB_SLAM::Map* mpWorld;
 
-    // Tracker. It receives a frame and computes the associated camera pose.
-    // It also decides when to insert a new keyframe, create some new MapPoints and
-    // performs relocalization if tracking fails.
-    ORB_SLAM2::Tracking* mpTracker;
+     //Create Map Publisher for Rviz
+    ORB_SLAM::MapPublisher* mpMapPub;
 
-    // Local Mapper. It manages the local map and performs local bundle adjustment.
-    ORB_SLAM2::LocalMapping* mpLocalMapper;
+    //Initialize the Tracking Thread and launch
+    ORB_SLAM::Tracking* mpTracker;
 
-    // Loop Closer. It searches loops with every new keyframe. If there is a loop it performs
-    // a pose graph optimization and full bundle adjustment (in a new thread) afterwards.
-    ORB_SLAM2::LoopClosing* mpLoopCloser;
+    ORB_SLAM::LocalMapping* mpLocalMapper;
 
-    // The viewer draws the map and the current camera pose. It uses Pangolin.
-    ORB_SLAM2::Viewer* mpViewer;
+    ORB_SLAM::LoopClosing* mpLoopCloser;
 
-    ORB_SLAM2::FrameDrawer* mpFrameDrawer;
-    ORB_SLAM2::MapDrawer* mpMapDrawer;
-
-    // System threads: Local Mapping, Loop Closing, Viewer.
-    // The Tracking thread "lives" in the main execution thread that creates the System object.
-    std::thread* mptLocalMapping;
-    std::thread* mptLoopClosing;
-    std::thread* mptViewer;
-
-    // Reset flag
-    std::mutex mMutexReset;
-    bool mbReset;
-
-    // Change mode flags
-    std::mutex mMutexMode;
-    bool mbActivateLocalizationMode;
-    bool mbDeactivateLocalizationMode;
-
-
+    boost::thread* mptTracking;
+    boost::thread* mptLocalMapping;
+    boost::thread* mptLoopClosing;
 
 	Predictor* predConvert;			// used ONLY to convert from rpy to se3 and back, i.e. never kept in some state.
 	Predictor* predIMUOnlyForScale;	// used for scale calculation. needs to be updated with every new navinfo...
@@ -265,6 +172,56 @@ private:
 
 	std::ofstream* logfileScalePairs;
 	static pthread_mutex_t logScalePairs_CS; //pthread_mutex_lock( &cs_mutex );
+
+
+
+	public:
+	// ROS exclusive: called by external thread if a new image/navdata is received.
+	// takes care of sync etc.
+
+	PTAMWrapper(DroneKalmanFilter* dkf, EstimationNode* nde);
+	~PTAMWrapper(void);
+
+	void newImage(sensor_msgs::ImageConstPtr img);
+	void newNavdata(ardrone_autonomy::Navdata* nav);
+	bool newImageAvailable;
+	void setPTAMPars(double minKFTimeDist, double minKFWiggleDist, double minKFDist);
+
+	bool handleCommand(std::string s);
+	bool mapLocked;
+	int maxKF;
+	static pthread_mutex_t navInfoQueueCS; //pthread_mutex_lock( &cs_mutex );
+	static pthread_mutex_t shallowMapCS; //pthread_mutex_lock( &cs_mutex );
+
+	// Event handling routines.
+	// get called by the myGLWindow on respective event.
+	virtual void on_key_down(int key);
+	//virtual void on_mouse_move(CVD::ImageRef where, int state);
+	virtual void on_mouse_down(CVD::ImageRef where, int state, int button);
+	//virtual void on_event(int event);
+	
+	// resets PTAM tracking
+	inline void Reset() {resetPTAMRequested = true;};
+
+
+	// start and stop system and respective thread.
+	void startSystem();
+	void stopSystem();
+
+
+
+	enum {PTAM_IDLE = 0, PTAM_INITIALIZING = 1, PTAM_LOST = 2, PTAM_GOOD = 3, PTAM_BEST = 4, PTAM_TOOKKF = 5, PTAM_FALSEPOSITIVE = 6} PTAMStatus;
+	TooN::SE3<> lastPTAMResultRaw;
+	std::string lastPTAMMessage;
+
+	// for map rendering: shallow clone
+	std::vector<tvec3> mapPointsTransformed;
+	std::vector<tse3> keyFramesTransformed;
+
+	ardrone_autonomy::Navdata lastNavinfoReceived;
+
+	int PTAMInitializedClock;
+
 
 };
 

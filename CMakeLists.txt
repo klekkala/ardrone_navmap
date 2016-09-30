@@ -101,25 +101,23 @@ set(STATEESTIMATION_SOURCE_FILES
   src/stateestimation/PTAMWrapper.cpp
   src/stateestimation/MapView.cpp
   src/stateestimation/EstimationNode.cpp
-  src/stateestimation/ORB_SLAM2/src/Converter.cc
-  src/stateestimation/ORB_SLAM2/src/Frame.cc
-  src/stateestimation/ORB_SLAM2/src/FrameDrawer.cc
-  src/stateestimation/ORB_SLAM2/src/Initializer.cc
-  src/stateestimation/ORB_SLAM2/src/KeyFrame.cc
-  src/stateestimation/ORB_SLAM2/src/KeyFrameDatabase.cc
-  src/stateestimation/ORB_SLAM2/src/LocalMapping.cc
-  src/stateestimation/ORB_SLAM2/src/LoopClosing.cc
-  src/stateestimation/ORB_SLAM2/src/Map.cc
-  src/stateestimation/ORB_SLAM2/src/MapDrawer.cc
-  src/stateestimation/ORB_SLAM2/src/MapPoint.cc
-  src/stateestimation/ORB_SLAM2/src/Optimizer.cc
-  src/stateestimation/ORB_SLAM2/src/ORBextractor.cc
-  src/stateestimation/ORB_SLAM2/src/ORBmatcher.cc
-  src/stateestimation/ORB_SLAM2/src/PnPsolver.cc
-  src/stateestimation/ORB_SLAM2/src/Sim3Solver.cc
-  src/stateestimation/ORB_SLAM2/src/System.cc
-  src/stateestimation/ORB_SLAM2/src/Tracking.cc
-  src/stateestimation/ORB_SLAM2/src/Viewer.cc
+  src/stateestimation/ORB_SLAM/src/Converter.cc
+  src/stateestimation/ORB_SLAM/src/Frame.cc
+  src/stateestimation/ORB_SLAM/src/FramePublisher.cc
+  src/stateestimation/ORB_SLAM/src/Initializer.cc
+  src/stateestimation/ORB_SLAM/src/KeyFrame.cc
+  src/stateestimation/ORB_SLAM/src/KeyFrameDatabase.cc
+  src/stateestimation/ORB_SLAM/src/LocalMapping.cc
+  src/stateestimation/ORB_SLAM/src/LoopClosing.cc
+  src/stateestimation/ORB_SLAM/src/Map.cc
+  src/stateestimation/ORB_SLAM/src/MapPoint.cc
+  src/stateestimation/ORB_SLAM/src/MapPublisher.cc
+  src/stateestimation/ORB_SLAM/src/Optimizer.cc
+  src/stateestimation/ORB_SLAM/src/ORBextractor.cc
+  src/stateestimation/ORB_SLAM/src/ORBmatcher.cc
+  src/stateestimation/ORB_SLAM/src/PnPsolver.cc
+  src/stateestimation/ORB_SLAM/src/Sim3Solver.cc
+  src/stateestimation/ORB_SLAM/src/Tracking.cc
 
 )
 set(STATEESTIMATION_HEADER_FILES    
@@ -133,26 +131,24 @@ set(STATEESTIMATION_HEADER_FILES
   src/stateestimation/MapView.h
   src/stateestimation/EstimationNode.h
   src/stateestimation/OpenGL.h
-  src/stateestimation/ORB_SLAM2/include/Converter.h
-  src/stateestimation/ORB_SLAM2/include/FrameDrawer.h
-  src/stateestimation/ORB_SLAM2/include/Frame.h
-  src/stateestimation/ORB_SLAM2/include/Initializer.h
-  src/stateestimation/ORB_SLAM2/include/KeyFrameDatabase.h
-  src/stateestimation/ORB_SLAM2/include/KeyFrame.h
-  src/stateestimation/ORB_SLAM2/include/LocalMapping.h
-  src/stateestimation/ORB_SLAM2/include/LoopClosing.h
-  src/stateestimation/ORB_SLAM2/include/MapDrawer.h
-  src/stateestimation/ORB_SLAM2/include/Map.h
-  src/stateestimation/ORB_SLAM2/include/MapPoint.h
-  src/stateestimation/ORB_SLAM2/include/Optimizer.h
-  src/stateestimation/ORB_SLAM2/include/ORBextractor.h
-  src/stateestimation/ORB_SLAM2/include/ORBmatcher.h
-  src/stateestimation/ORB_SLAM2/include/ORBVocabulary.h
-  src/stateestimation/ORB_SLAM2/include/PnPsolver.h
-  src/stateestimation/ORB_SLAM2/include/Sim3Solver.h
-  src/stateestimation/ORB_SLAM2/include/System.h
-  src/stateestimation/ORB_SLAM2/include/Tracking.h
-  src/stateestimation/ORB_SLAM2/include/Viewer.h
+  src/stateestimation/ORB_SLAM/src/Converter.h
+  src/stateestimation/ORB_SLAM/src/FramePublisher.h
+  src/stateestimation/ORB_SLAM/src/Frame.h
+  src/stateestimation/ORB_SLAM/src/Initializer.h
+  src/stateestimation/ORB_SLAM/src/KeyFrameDatabase.h
+  src/stateestimation/ORB_SLAM/src/KeyFrame.h
+  src/stateestimation/ORB_SLAM/src/LocalMapping.h
+  src/stateestimation/ORB_SLAM/src/LoopClosing.h
+  src/stateestimation/ORB_SLAM/src/MapPublisher.h
+  src/stateestimation/ORB_SLAM/src/Map.h
+  src/stateestimation/ORB_SLAM/src/MapPoint.h
+  src/stateestimation/ORB_SLAM/src/Optimizer.h
+  src/stateestimation/ORB_SLAM/src/ORBextractor.h
+  src/stateestimation/ORB_SLAM/src/ORBmatcher.h
+  src/stateestimation/ORB_SLAM/src/ORBVocabulary.h
+  src/stateestimation/ORB_SLAM/src/PnPsolver.h
+  src/stateestimation/ORB_SLAM/src/Sim3Solver.h
+  src/stateestimation/ORB_SLAM/src/Tracking.h
 
 )
 
@@ -179,7 +175,8 @@ add_definitions(-DKF_REPROJ)
 # build!
 add_executable(drone_stateestimation ${STATEESTIMATION_SOURCE_FILES} ${STATEESTIMATION_HEADER_FILES})
 set_target_properties(drone_stateestimation PROPERTIES COMPILE_FLAGS "-D_LINUX -D_REENTRANT -Wall  -O3 -march=nocona -msse3") 
-target_link_libraries(drone_stateestimation ${PTAM_LIBRARIES} ${catkin_LIBRARIES} ${OpenCV_LIBS} ${EIGEN3_LIBS} ${Pangolin_LIBRARIES} ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so)
+
+target_link_libraries(drone_stateestimation ${PTAM_LIBRARIES} ${catkin_LIBRARIES} ${OpenCV_LIBS} ${EIGEN3_LIBS} ${Pangolin_LIBRARIES} ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/DBoW2/lib/libDBoW2.so ${CMAKE_BINARY_DIR}/thirdparty/src/thirdparty/g2o/lib/libg2o.so)
 
 add_dependencies(drone_stateestimation thirdparty ${PROJECT_NAME}_gencpp ${PROJECT_NAME}_gencfg)
 

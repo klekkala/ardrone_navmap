@@ -77,6 +77,7 @@ DroneKalmanFilter::DroneKalmanFilter(EstimationNode* n)
 {
 	scalePairs = new std::vector<ScaleStruct>();
 	navdataQueue = new std::deque<ardrone_autonomy::Navdata>();
+	usQueue = new std::deque<us_msgs::usPtr>();
 	velQueue = new std::deque<geometry_msgs::TwistStamped>();
 
 	useScalingFixpoint = false;
@@ -931,6 +932,7 @@ void DroneKalmanFilter::addPTAMObservation(TooN::Vector<6> trans, int time)
 	observePTAM(trans);
 	numGoodPTAMObservations++;
 }
+
 void DroneKalmanFilter::addFakePTAMObservation(int time)
 {
 	if(time > predictdUpToTimestamp)
@@ -938,6 +940,16 @@ void DroneKalmanFilter::addFakePTAMObservation(int time)
 
 	lastPosesValid = false;
 }
+
+
+
+void DroneKalmanFilter::sync_plan(double roll_global, double pitch_global, double yaw_global)
+{
+	float x_err, y_err, epsilon_x, epsilon_y;
+
+}
+
+
 tum_ardrone::filter_state DroneKalmanFilter::getPoseAt(ros::Time t, bool useControlGains)
 {
 	// make shallow copy
